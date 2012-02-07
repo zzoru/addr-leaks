@@ -1,6 +1,6 @@
 #summary Relate works section
 
-= Introduction =
+= Related Works =
 
   * Dynamic Taint Analysis for Automatic Detection, Analysis, and Signature Generation of Exploits on Commodity Software, _James Newsome_, NDSS 2005
     * *Summary*: the paper describes a dynamic instrumentation technique that is more efficient and precise than the state-of-the-art approaches in 2005.
