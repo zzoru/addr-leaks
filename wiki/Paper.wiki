@@ -1,0 +1,25 @@
+#summary Paper layout
+
+= Introduction =
+
+  * The address disclosure problem.
+  * Importance (cite numbers, mention bluehat, etc)
+  * Our contributions
+
+= Background =
+
+  * Illustrate the address disclosure problem with Gabriel's example.
+
+= Our solution =
+
+  * Dynamic instrumentation
+    * Optimizations
+  * Static analysis
+    * Tracking information flow through memory
+
+= Experiments =
+
+  * See if it is possible to run the analysis in TraceMonkey
+  * SPEC 2006
+
+= Conclusion =
