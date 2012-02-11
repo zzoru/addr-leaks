@@ -29,3 +29,5 @@
   * Framework for Instruction-level Tracing and Analysis of Program Executions, _Bhansali et al._, VEE 2006
     * *Summary*: the paper presents a framework to collect detailed traces of a program's execution that can be re-simulated deterministically. The framework has two components: a dynamic binary translator and a trace recorder. It does not require any static instrumentation of the program. They measured an overhead of 12-17x slowdown.
     * *What can we take from it?* We can see that the measured overhead is high and does not include the time to perform a dynamic taint analysis on-the-fly or over the produced run traces, so adopting a similar approach could not produce an overhead of at most 5% as we want.
+
+  * A comparison of publicly available tools for dynamic buffer overflow prevention, _Wilander et al._
