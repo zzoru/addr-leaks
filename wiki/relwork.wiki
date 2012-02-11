@@ -2,6 +2,8 @@
 
 = Related Works =
 
+=== Dynamic instrumentation ===
+
   * Dynamic Taint Analysis for Automatic Detection, Analysis, and Signature Generation of Exploits on Commodity Software, _James Newsome_, NDSS 2005
     * *Summary*: the paper describes a dynamic instrumentation technique that is more efficient and precise than the state-of-the-art approaches in 2005.
     * *What can we take from it?* We should use some optimization techniques to mitigate the impact of our instrumentation.
@@ -9,6 +11,20 @@
   * Dytan: A Generic Dynamic Taint Analysis Framework, _James Clause, Wanchun Li, and Alessandro Orso_, ISSTA 2007
     * *Summary*: the paper describes a general framework for dynamic taint analysis that is flexible, customizable, performs both data-flow and control-flow based taint analysis and works at the application level directly on binaries with on-the-fly instrumentation. The control-flow based propagation computes CFGs and pdom information statically to further use it dynamically. With this framework they simulated two previous ad-hoc dynamic taint analysis with little configuration effort and obtained similar results. The time overhead for data-flow based propagation alone was ~30x, whereas the overhead for data- and control-flow propagation was ~50x. (using Intel's PIN)
     * *What can we take from it?* They reference works that achieve dynamic taint analysis by instrumenting the program's source code (Xu et al. 06 and Lam and Chiueh 06), use dynamic taint analysis to enforce information-flow policies (Vachharajani et al. 04, Chow et al. 04, McCamant and Ernst 06) and perform static information-flow analysis (Myers 99, Pottier et al. 02). We could consider using control-flow based propagation to improve our results.
+
+=== Combining static and dynamic analysis to secure programs ===
+
+  * Combining Static and Dynamic Analysis to Discover Software Vulnerabilities, _Zhang et al._
+
+  * Securing Web Application Code by Static Analysis and Runtime Protection, _Huang et al._
+
+  * Saner: Composing Static and Dynamic Analysis to Validate Sanitization in Web Applications, _Balzarotti et al._
+
+  * The MINESTRONE Architecture Combining Static and Dynamic Analysis Techniques for Software Security, _Keromytis et al._
+
+=== Statically tracking the flow of information === 
+
+=== Other ===
 
   * Framework for Instruction-level Tracing and Analysis of Program Executions, _Bhansali et al._, VEE 2006
     * *Summary*: the paper presents a framework to collect detailed traces of a program's execution that can be re-simulated deterministically. The framework has two components: a dynamic binary translator and a trace recorder. It does not require any static instrumentation of the program. They measured an overhead of 12-17x slowdown.
