@@ -196,6 +196,12 @@ exit_system_offset = exit_addr - system_addr = 0x1689e0 - 0x172b20 = - 0xa140
 
 With these offsets we can calculate the _system()_ and _exit()_ addresses right from the the leaked _send()_ address.
 
+To calculate the address of the string containing the argument to _system()_, we just add the size of the data we send before such string to the leaked stack address, so:
+
+{{{
+command_addr = leaked_stack_addr + 52 (AAA...) + 4 (system_addr) + 4 (system_ret_addr) + 4 (command_addr)
+}}}
+
 When the RET instruction of _process_input()_ is processed, it will jump to the _system()_ function, execute the malicious command and return to the _exit()_ function.
 
 == Running the exploit ==
