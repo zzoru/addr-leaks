@@ -194,6 +194,8 @@ system_send_offset = system_addr - send_addr = 0x172b20 - 0x2098f0 = - 0x96dd0
 exit_system_offset = exit_addr - system_addr = 0x1689e0 - 0x172b20 = - 0xa140
 }}}
 
+With these offsets we can calculate the _system()_ and _exit()_ addresses right from the the leaked _send()_ address.
+
 When the RET instruction of _process_input()_ is processed, it will jump to the _system()_ function, execute the malicious command and return to the _exit()_ function.
 
 == Running the exploit ==
