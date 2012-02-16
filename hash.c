@@ -20,9 +20,14 @@ typedef struct
 
 Hashitem hash[65536];
 
+void initHash()
+{
+	memset(hash, 0, sizeof(hash));
+}
+
 void init()
 {
-  memset(hash, 0, sizeof(hash));
+  initHash();
 }
 
 void addInList(List* list, void* ptr, void* dest)
@@ -83,4 +88,27 @@ void* getFromHash(void* ptr)
   }
 }
 
+void* createArgvShadow(int argc, void** argv) //@todo Need to discover how to make it i32 rather than int (there are other solutions of course)
+{
+	for (int i = 0; i < argc; i++)
+	{
+		void* p = argv[i];
+		
+		while (*(int*)p != 0)
+		{
+			p++;
+		}
+		
+		int size = p - argv[i];
+		void* shadow = malloc(size * 8);
+		addInHash(argv[i], shadow);
+		memset(shadow, 0, size * 8);
+	}
+	
+	char** argvShadow = malloc(sizeof(void*) * argc);
+	
+	addInHash(argv, argvShadow);
+	memset(argvShadow, -1, argc * sizeof(void*));
+	return argvShadow;
+}
 

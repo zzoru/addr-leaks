@@ -47,8 +47,8 @@ private:
 	GlobalVariable& GetReturnShadow(Type&);
 	GlobalVariable& GetReturnShadowMemory(Type&);
 	Value& GetShadow(Value&);
-	Value* GetShadowMemory(Value&);
-	void AddShadowMemory(Value&, Value*);
+	Value& GetShadowMemory(Value&);
+	void AddShadowMemory(Value&, Value&);
 	void SetupParamPassingShadows();
 	GlobalVariable& GetParamShadow(Function&, int); //@todo Perhaps should receive an Arg as type (I'm not sure whether Arg is really the equivalent as Param)
 	void MarkAsNotOriginal(Instruction&);
@@ -60,7 +60,7 @@ private:
 	Value* HandlePrintfCall(CallSite&);
 	Value* HandleMallocCall(CallSite&);
 	Instruction* GetNextInstruction(Instruction&);
-	bool IsExternalArg(Value&);
+	Function& GetCreateArgvShadowFunction();
 	
 	Module* module;
 	LLVMContext* context;
@@ -69,6 +69,7 @@ private:
 	std::map<Value*, Value*> shadowMemoryMap;
 	std::map<Value*, Value*> valueToShadow;
 	std::map<PHINode*, PHINode*> delayedPHINodes; //@todo That is not a good name but I can't think any better than this right now
+	std::map<PHINode*, PHINode*> delayedPHIShadowMemoryNodes;
 	
 	static const int target = 64;
 	static const int ptrSize = 64;
