@@ -22,7 +22,6 @@ bool FullPass::runOnModule(Module& module)
 			Instruction* i = &*instructionIt; //@todo This was necessary before. Not sure if it's necessary now.
 			if (! IsNotOriginal(*i))
 			{
-				db("Instrumenting " << *i);
 				Instrument(*instructionIt);
 			}
 		}
@@ -53,11 +52,28 @@ void FullPass::Setup(Module& module)
 	
 	CallInst* init = CallInst::Create(&f, "", &*instructionIt);
 	MarkAsNotOriginal(*init);
+	
+	Function* main = module.getFunction("main");
+	Function::ArgumentListType& argList =  main->getArgumentList();
+	
+	//@todo this assumes that in main you either have 0 parameters or 2
+	if (argList.size() >= 2)
+	{
+		Argument& argc = argList.front();
+		Argument& argv = *argList.getNext(&argc);
+		Function& createArgvShadow = GetCreateArgvShadowFunction();
+		std::vector<Value*> args;
+		args.push_back(&argc);
+		args.push_back(&argv);
+		CallInst* callToCreateArgvShadow = CallInst::Create(&createArgvShadow, args, "", &*instructionIt);
+		AddShadowMemory(argv, *callToCreateArgvShadow);
+		AddShadowMemory(argc, GetNullValue(*Type::getInt32Ty(*context)));
+		MarkAsNotOriginal(*callToCreateArgvShadow);
+	}
 }
 
 Value* FullPass::Instrument(Instruction& instruction)
-{
-	db("*********************" << instruction)
+{	
 	//@todo Make tests with type conversions including floats
 	if (instruction.isBinaryOp())
 	{
@@ -87,7 +103,7 @@ Value* FullPass::Instrument(Instruction& instruction)
 			Value& op = *ret.getOperand(0);
 			Value& shadow = GetShadow(op);
 			GlobalVariable& returnShadow = GetReturnShadow(*shadow.getType());
-			StoreInst* store = new StoreInst(&shadow, &returnShadow, &instruction); //@todo memory leak	
+			StoreInst* store = new StoreInst(&shadow, &returnShadow, &instruction); 
 			MarkAsNotOriginal(*store);
 			break;
 		}
@@ -137,7 +153,7 @@ Value* FullPass::Instrument(Instruction& instruction)
 //			MarkAsNotOriginal(*mul);
 //			CreateAndInsertFillMemoryCode(*allocaClone, *mul, GetInt(8,0), instruction);
 			
-			AddShadowMemory(alloca, allocaClone);
+			AddShadowMemory(alloca, *allocaClone);
 			
 			//storing the relationship memory <---> shadow memory in the hash table
 			Function& addInHashFunction = GetAddInHashFunction();
@@ -149,7 +165,7 @@ Value* FullPass::Instrument(Instruction& instruction)
 			BitCastInst* castClone = new BitCastInst(allocaClone, Type::getInt8PtrTy(*context), "", nextInstruction);
 			MarkAsNotOriginal(*castClone);
 			args.push_back(castClone);
-			CallInst* call = CallInst::Create(&addInHashFunction, args, "", nextInstruction); //@todo Memory leak
+			CallInst* call = CallInst::Create(&addInHashFunction, args, "", nextInstruction); 
 			MarkAsNotOriginal(*call);
 			break;
 		}
@@ -158,24 +174,12 @@ Value* FullPass::Instrument(Instruction& instruction)
 			LoadInst& load = cast<LoadInst>(instruction);
 			
 			Value* pointer = load.getPointerOperand();
-			Value* pointerShadowMemory = GetShadowMemory(*pointer);
+			Value& pointerShadowMemory = GetShadowMemory(*pointer);
 			
-			if (pointerShadowMemory)
-			{
-				newShadow = new LoadInst(pointerShadowMemory, "", &instruction);
-			}
-			else //this is an external arg like argv
-			{
-				newShadow = &GetNullValue(*load.getType());
-			}
+			newShadow = new LoadInst(&pointerShadowMemory, "", &instruction);
 			
 			if (load.getType()->isPointerTy())
 			{
-				if (! pointerShadowMemory) //is something like argv (an memory area that does not have a shadow memory) 
-				{
-					
-					break;
-				}
 				//getting from the hash the pointer to the shadow memory relative to the result of the load
 				Function& f = GetGetFromHashFunction();
 				std::vector<Value*> args;
@@ -187,7 +191,7 @@ Value* FullPass::Instrument(Instruction& instruction)
 				MarkAsNotOriginal(*call);
 				BitCastInst* res = new BitCastInst(call, load.getType(), "", nextInstruction);
 				MarkAsNotOriginal(*res);
-				AddShadowMemory(load, res);
+				AddShadowMemory(load, *res);
 			}
 			
 			break;
@@ -196,10 +200,10 @@ Value* FullPass::Instrument(Instruction& instruction)
 		{
 			StoreInst& store = cast<StoreInst>(instruction);
 			Value* pointer = store.getPointerOperand();
-			Value* pointerShadow = GetShadowMemory(*pointer);
+			Value& pointerShadow = GetShadowMemory(*pointer);
 			Value* storedValue = store.getValueOperand();
 			Value& storedValueShadow = GetShadow(*storedValue);
-			StoreInst* shadowStore = new StoreInst(&storedValueShadow, pointerShadow, &instruction); //@todo Memory leak
+			StoreInst* shadowStore = new StoreInst(&storedValueShadow, &pointerShadow, &instruction); 
 			MarkAsNotOriginal(*shadowStore);
 			break;
 		}
@@ -218,30 +222,21 @@ Value* FullPass::Instrument(Instruction& instruction)
 		{
 			GetElementPtrInst& gep = cast<GetElementPtrInst>(instruction);
 			Value* pointer = gep.getPointerOperand();
-			Value* pointerShadowMemory = GetShadowMemory(*pointer);
+			Value& pointerShadowMemory = GetShadowMemory(*pointer);
 			
 			std::vector<Value*> idx;
-			
+
 			for (GetElementPtrInst::op_iterator it = gep.idx_begin(), itEnd = gep.idx_end(); it != itEnd; ++it)
 			{
 				idx.push_back(*it);
 			}
 			
-			if (pointerShadowMemory)
-			{
-				GetElementPtrInst* shadowGep = GetElementPtrInst::Create(pointerShadowMemory, idx, "", &instruction); //@todo Memory leak
-				MarkAsNotOriginal(*shadowGep);
-				AddShadowMemory(gep, shadowGep);
-			}
-			else
-			{
-				AddShadowMemory(gep, 0);
-			}
-				
+			GetElementPtrInst* shadowGep = GetElementPtrInst::Create(&pointerShadowMemory, idx, "", &instruction); //@todo Memory leak
+			MarkAsNotOriginal(*shadowGep);
+			AddShadowMemory(gep, *shadowGep);
+
 			newShadow = &GetAllOnesValue(*gep.getType());
-			
-			db("Shadow of gep: " << *newShadow)
-			
+
 			break;
 		}
 		//@todo conversion operators
@@ -253,9 +248,9 @@ Value* FullPass::Instrument(Instruction& instruction)
 			
 			if (bitcast.getOperand(0)->getType()->isPointerTy())
 			{
-				Value* shadowMemory = GetShadowMemory(*bitcast.getOperand(0));
-				BitCastInst* newShadowMemory = new BitCastInst(shadowMemory, bitcast.getDestTy(), "", &instruction);
-				AddShadowMemory(bitcast, newShadowMemory);
+				Value& shadowMemory = GetShadowMemory(*bitcast.getOperand(0));
+				BitCastInst* newShadowMemory = new BitCastInst(&shadowMemory, bitcast.getDestTy(), "", &instruction);
+				AddShadowMemory(bitcast, *newShadowMemory);
 				MarkAsNotOriginal(*newShadowMemory);
 			}
 			
@@ -271,17 +266,17 @@ Value* FullPass::Instrument(Instruction& instruction)
 		}
 		case Instruction::PHI:
 		{
-			//@todo Implement what's left to be implemented
 			PHINode& phi = cast<PHINode>(instruction);
-			//@todo This feels too much strange.
 			newShadow = PHINode::Create(phi.getType(), 0, "", &instruction);  //@todo I put NumReservedValues=0 because it's the safe choice and I don't know how to get the original one
 			delayedPHINodes.insert(std::pair<PHINode*, PHINode*>(&phi, cast<PHINode>(newShadow)));
 			
-//			if (phi.getType()->isPointerTy())
-//			{
-//				PHINode* newMemoryShadow = PHINode::Create(phi.getType(), 0, "", &instruction); 
-//			}
-//			
+			if (phi.getType()->isPointerTy())
+			{
+				PHINode* newMemoryShadow = PHINode::Create(phi.getType(), 0, "", &instruction); 
+				AddShadowMemory(phi, *newMemoryShadow);
+				delayedPHIShadowMemoryNodes.insert(std::pair<PHINode*, PHINode*>(&phi, cast<PHINode>(newMemoryShadow)));
+			}
+			
 			break;
 		}
 		case Instruction::Select:
@@ -587,7 +582,6 @@ Value& FullPass::GetShadow(Value& value)
 	if (instruction)
 	{
 		Value* shadow = Instrument(*instruction);
-		if (shadow == 0) db("ERROR*******************" << value);
 		assert(shadow != 0);
 		return *shadow;
 	}
@@ -597,15 +591,13 @@ Value& FullPass::GetShadow(Value& value)
 }
 
 //@todo If there's an infinite loop then this is a probable cause
-Value* FullPass::GetShadowMemory(Value& value)
+Value& FullPass::GetShadowMemory(Value& value)
 {
-	if (IsExternalArg(value)) return 0;
-	
 	std::map<Value*, Value*>::iterator it = shadowMemoryMap.find(&value);
 	
 	if (it != shadowMemoryMap.end())
 	{
-		return it->second;
+		return *it->second;
 	}
 
 	Instruction* instruction = dyn_cast<Instruction>(&value);
@@ -618,19 +610,18 @@ Value* FullPass::GetShadowMemory(Value& value)
 	
 	if (dyn_cast<Argument>(&value))
 	{
-		db("huahahauhauhahuahuahuhuauhauhauh")
-		return &GetNullValue(*value.getType());
+		return GetNullValue(*value.getType());
 	}
 	
 	GlobalVariable& gv = cast<GlobalVariable>(value);
 	GlobalVariable* clone = new GlobalVariable(*module, gv.getType(), gv.isConstant(), gv.getLinkage(), &GetNullValue(*gv.getType()->getElementType()), "", &gv, gv.isThreadLocal()); 
 	shadowMemoryMap.insert(std::pair<Value*, Value*>(&gv, clone));
-	return clone;
+	return *clone;
 }
 
-void FullPass::AddShadowMemory(Value& original, Value* shadow)
+void FullPass::AddShadowMemory(Value& original, Value& shadow)
 {
-	shadowMemoryMap.insert(std::pair<Value*, Value*>(&original, shadow));
+	shadowMemoryMap.insert(std::pair<Value*, Value*>(&original, &shadow));
 }
 
 void FullPass::SetupParamPassingShadows()
@@ -725,19 +716,21 @@ void FullPass::InstrumentDelayedPHINodes()
 			++blockIt;
 		}
 		
-		if (original.getType()->isPointerTy())
+	}
+	
+	for (std::map<PHINode*, PHINode*>::iterator it = delayedPHIShadowMemoryNodes.begin(), itEnd = delayedPHIShadowMemoryNodes.end(); it != itEnd; ++it)
+	{
+		PHINode& original = *it->first;
+		PHINode& phiShadow = *it->second;
+
+		PHINode::block_iterator blockIt = original.block_begin(), blockItEnd = original.block_end();
+		for (PHINode::op_iterator it = original.op_begin(), itEnd = original.op_end(); it != itEnd; ++it)
 		{
-			PHINode* shadowMemoryPHI = PHINode::Create(original.getType(), 0, "", &original);
-			MarkAsNotOriginal(*shadowMemoryPHI);
-			
-			PHINode::block_iterator blockIt = original.block_begin(), blockItEnd = original.block_end();
-			for (PHINode::op_iterator it = original.op_begin(), itEnd = original.op_end(); it != itEnd; ++it)
-			{
-				Value* shadowMemory = GetShadowMemory(**it);
-				shadowMemoryPHI->addIncoming(shadowMemory, *blockIt);
-				++blockIt;
-			}
+			Value& shadow = GetShadowMemory(**it);
+			phiShadow.addIncoming(&shadow, *blockIt);
+			++blockIt;
 		}
+
 	}
 }
 
@@ -831,8 +824,15 @@ Instruction* FullPass::GetNextInstruction(Instruction& i)
 	return it;
 }
 
-bool FullPass::IsExternalArg(Value& v)
+Function& FullPass::GetCreateArgvShadowFunction()
 {
-	Argument* arg = dyn_cast<Argument>(&v);
-	return arg && arg->getParent()->getName().equals("main") && (v.getName().equals("argc") || v.getName().equals("argv"));
+	static Function* func = 0;
+
+	if (func) return *func;
+
+	std::vector<Type*> params;
+	params.push_back(Type::getInt32Ty(*context)); 
+	params.push_back(Type::getInt8PtrTy(*context)->getPointerTo());
+	func = Function::Create(FunctionType::get(Type::getInt8PtrTy(*context)->getPointerTo(), params, false), GlobalValue::ExternalLinkage, "createArgvShadow", module);
+	return *func;
 }
