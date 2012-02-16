@@ -600,6 +600,16 @@ Value& FullPass::GetShadowMemory(Value& value)
 		return *it->second;
 	}
 
+	GlobalVariable* gv = dyn_cast<GlobalVariable>(&value);
+
+	if (gv)
+	{
+		GlobalVariable* clone = new GlobalVariable(*module, gv->getType(), gv->isConstant(), gv->getLinkage(), 
+				                                   &GetNullValue(*gv->getType()->getElementType()), "", gv, gv->isThreadLocal()); 
+		shadowMemoryMap.insert(std::pair<Value*, Value*>(gv, clone));
+		return *clone;
+	}
+	
 	Instruction* instruction = dyn_cast<Instruction>(&value);
 
 	if (instruction)
@@ -608,15 +618,7 @@ Value& FullPass::GetShadowMemory(Value& value)
 		return GetShadowMemory(value);
 	}
 	
-	if (dyn_cast<Argument>(&value))
-	{
-		return GetNullValue(*value.getType());
-	}
-	
-	GlobalVariable& gv = cast<GlobalVariable>(value);
-	GlobalVariable* clone = new GlobalVariable(*module, gv.getType(), gv.isConstant(), gv.getLinkage(), &GetNullValue(*gv.getType()->getElementType()), "", &gv, gv.isThreadLocal()); 
-	shadowMemoryMap.insert(std::pair<Value*, Value*>(&gv, clone));
-	return *clone;
+	assert(0 && "this should never be reached. value is probably a constant expression");
 }
 
 void FullPass::AddShadowMemory(Value& original, Value& shadow)
@@ -802,18 +804,37 @@ Value* FullPass::HandlePrintfCall(CallSite& cs)
 
 Value* FullPass::HandleMallocCall(CallSite& cs)
 {
-	std::vector<Value*> args;
-	args.push_back(cs.getArgument(0));
+	Instruction* mallocCall = cs.getInstruction();
+	
+	std::vector<Value*> shadowMallocCallArgs;
+	shadowMallocCallArgs.push_back(cs.getArgument(0));
 	
 	std::vector<Type*> params;
 	params.push_back(Type::getIntNTy(*context, target));
 	
 	Function* malloc = module->getFunction("malloc");
 	assert(malloc != 0);
-	CallInst* mallocShadow = CallInst::Create(malloc, args, "", cs.getInstruction());
+	CallInst* mallocShadow = CallInst::Create(malloc, shadowMallocCallArgs, "", mallocCall);
 	MarkAsNotOriginal(*mallocShadow);
+	AddShadowMemory(*mallocCall, *mallocShadow);
+
+	//storing the relationship memory <---> shadow memory in the hash table
+	Function& addInHashFunction = GetAddInHashFunction();
+	std::vector<Value*> args;	
+	Instruction* nextInstruction = GetNextInstruction(*mallocCall);
+	BitCastInst* cast = new BitCastInst(mallocCall, Type::getInt8PtrTy(*context), "", nextInstruction);
+	MarkAsNotOriginal(*cast);
+	args.push_back(cast);
+	BitCastInst* castClone = new BitCastInst(mallocShadow, Type::getInt8PtrTy(*context), "", nextInstruction);
+	MarkAsNotOriginal(*castClone);
+	args.push_back(castClone);
+	CallInst* call = CallInst::Create(&addInHashFunction, args, "", nextInstruction); 
+	MarkAsNotOriginal(*call);
 	
-	CreateAndInsertFillMemoryCode(*mallocShadow, *cs.getArgument(0), GetInt(8,0), *cs.getInstruction());
+	
+	
+	
+//	CreateAndInsertFillMemoryCode(*mallocShadow, *cs.getArgument(0), GetInt(8,0), *cs.getInstruction());
 	return mallocShadow;
 }
 
