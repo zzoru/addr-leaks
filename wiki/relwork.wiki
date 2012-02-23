@@ -26,6 +26,10 @@
 
 === Statically tracking the flow of information === 
 
+  * JFlow: Practical Mostly-Static Information Flow Control, _Myers_, POPL'99
+
+  * Information Flow Inference for ML, _Pottier et al._, POPL'02
+
 === Other ===
 
   * Framework for Instruction-level Tracing and Analysis of Program Executions, _Bhansali et al._, VEE 2006
