@@ -105,6 +105,9 @@ for filename in files:
         elif filename == 'inter1.bc':
             if result.find('File: inter1.c, Line: 14') != -1: passed = False
             if result.find('File: inter1.c, Line: 18') == -1: passed = False
+        elif filename == 'inter2.bc':
+            if result.find('File: inter2.c, Line: 13') == -1: passed = False
+            if result.find('File: inter2.c, Line: 14') == -1: passed = False
         elif filename == 'strings1.bc':
             if result.find('File: strings1.c, Line: 12') == -1: passed = False
             if result.find('File: strings1.c, Line: 15') == -1: passed = False
