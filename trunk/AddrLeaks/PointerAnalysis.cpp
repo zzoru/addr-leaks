@@ -2,11 +2,15 @@
 
 #include "PointerAnalysis.h"
 
+const bool debug = true;
+int teste = 1;
+
 // ============================================= //
 
 ///  Default constructor
 PointerAnalysis::PointerAnalysis()
 {
+    if (debug) std::cerr << "Initializing Pointer Analysis" << std::endl;
 }
 
 // ============================================= //
@@ -14,6 +18,7 @@ PointerAnalysis::PointerAnalysis()
 /// Destructor
 PointerAnalysis::~PointerAnalysis()
 {
+    if (debug) std::cerr << "Terminating Pointer Analysis" << std::endl;
 }
 
 // ============================================= //
@@ -23,6 +28,8 @@ PointerAnalysis::~PointerAnalysis()
  */
 void PointerAnalysis::addAddr(int A, int B)
 {
+    if (debug) std::cerr << "Adding Addr Constraint: " <<  A << " = &" << B << std::endl;
+
 	// Ensure nodes A and B exists.
 	addNode(A);
 	addNode(B);
@@ -38,6 +45,8 @@ void PointerAnalysis::addAddr(int A, int B)
  */
 void PointerAnalysis::addBase(int A, int B)
 {
+    if (debug) std::cerr << "Adding Base Constraint: " << A << " = " << B << std::endl;
+
 	// Ensure nodes A and B exists.
 	addNode(A);
 	addNode(B);
@@ -53,6 +62,8 @@ void PointerAnalysis::addBase(int A, int B)
  */
 void PointerAnalysis::addStore(int A, int B)
 {
+    if (debug) std::cerr << "Adding Store Constraint: *" << A << " = " << B << std::endl;
+
 	// Ensure nodes A and B exists.
 	addNode(A);
 	addNode(B);
@@ -68,6 +79,8 @@ void PointerAnalysis::addStore(int A, int B)
  */
 void PointerAnalysis::addLoad(int A, int B)
 {
+    if (debug) std::cerr << "Adding Load Constraint: " << A << " = *" << B << std::endl;
+
 	// Ensure nodes A and B exists.
 	addNode(A);
 	addNode(B);
@@ -85,6 +98,8 @@ void PointerAnalysis::addLoad(int A, int B)
  */
 std::set<int> PointerAnalysis::pointsTo(int A)
 {
+    if (debug) std::cerr << "Recovering Points-to-set of "<< A << std::endl;
+
 	int repA = vertices[A];
 	return pointsToSet[A];
 }
@@ -96,6 +111,8 @@ std::set<int> PointerAnalysis::pointsTo(int A)
  */
 void PointerAnalysis::addNode(int id)
 {
+    if (debug) std::cerr << "Adding Node " << id << std::endl;
+    
 	// Only add the node if it doesn't exist
 	if (vertices.find(id) == vertices.end()) 
 	{
@@ -112,6 +129,8 @@ void PointerAnalysis::addNode(int id)
  */
 void PointerAnalysis::addEdge(int fromId, int toId)
 {
+    if (debug) std::cerr << "Adding Edge from "<< fromId << " to " << toId << std::endl;
+
 	// We work with the representatives, so get them first.
 	int repFrom = fromId;//vertices[fromId];
 	int repTo = toId;//vertices[toId];
@@ -128,6 +147,8 @@ void PointerAnalysis::addEdge(int fromId, int toId)
  */
 void PointerAnalysis::addToPts(int pointed, int pointee)
 {
+    if (debug) std::cerr << "Adding " << pointed << " to pts(" << pointee << ")"  << std::endl;
+
 	// Add the reference
 	pointsToSet[pointee].insert(pointed);
 }
@@ -136,6 +157,8 @@ void PointerAnalysis::addToPts(int pointed, int pointee)
 
 void PointerAnalysis::removeCycles()
 {
+    if (debug) std::cerr << "Running cycle removal algorithm" << std::endl;
+
     // Some needed variables
     IntMap order;
     IntMap repr;
@@ -144,7 +167,7 @@ void PointerAnalysis::removeCycles()
     IntDeque S;
     
     // At first, no node is visited and their representatives are themselves
-    std::cout << "Initializing... " << std::endl;
+    if (debug) std::cerr << ">> Initializing structures" << std::endl;
     IntSet::iterator V;
     for (V = activeVertices.begin(); V != activeVertices.end(); V++) 
 	{
@@ -153,7 +176,7 @@ void PointerAnalysis::removeCycles()
     }
 
     // Visit all unvisited nodes
-    std::cout << "Visiting... " << std::endl;
+    if (debug) std::cerr << ">> Visiting vertices" << std::endl;
     for (V = activeVertices.begin(); V != activeVertices.end(); V++) 
 	{
         if (order[*V] == 0) 
@@ -163,15 +186,31 @@ void PointerAnalysis::removeCycles()
     }
     
     // Merge those whose representatives are not themselves
-    std::cout << "Merging... " << std::endl;
-    for (V = activeVertices.begin(); V != activeVertices.end(); V++) 
+    if (debug) std::cerr << ">> Merging vertices" << std::endl;
+    for (V = activeVertices.begin(); V != activeVertices.end(); ) 
 	{
-        std::cout << "Current vertice: " << *V << std::endl;
+        IntSet::iterator nextIt = V;
+        nextIt++;
+        if (debug) std::cerr << " * Current V (Before): " << *V << std::endl;
+        if (debug) std::cerr << " * Current nextIt (Before): " << *nextIt << std::endl;
         if (repr[*V] != *V) 
 		{
             merge(*V, repr[*V]);
         }
+        V = nextIt;
+        if (debug) std::cerr << " * Current V (After): " << *V << std::endl;
+        if (debug) std::cerr << " * Current nextIt (After): " << *nextIt << std::endl;
     }
+
+    if (debug) 
+    {
+        std::cerr << ">> Printing active vertices" << std::endl;
+        for (V = activeVertices.begin(); V != activeVertices.end(); V++) 
+        {
+            std::cerr << *V << std::endl;
+        }
+    }
+    
 }
 
 // ============================================= //
@@ -179,6 +218,8 @@ void PointerAnalysis::removeCycles()
 void PointerAnalysis::visit(int Node, IntMap& Order, IntMap& Repr, 
 	int& idxOrder, IntSet& Curr, IntDeque& Stack)
 {
+    if (debug) std::cerr << "  - Visiting vertex " << Node << std::endl;
+
 	idxOrder++;
     Order[Node] = idxOrder;
 
@@ -226,7 +267,8 @@ void PointerAnalysis::visit(int Node, IntMap& Order, IntMap& Repr,
  */
 void PointerAnalysis::merge(int id, int target)
 {
-    std::cout << "Merge " << id << " into " << target << std::endl;
+    if (debug) std::cerr << " - Merging " << id << " into " << target << std::endl;
+
 	// Remove all edges id->target, target->id
     from[id].erase(target);
     to[target].erase(id);
@@ -234,7 +276,7 @@ void PointerAnalysis::merge(int id, int target)
     to[id].erase(target);
 
     // Move all edges id->v to target->v
-    std::cout << "Outgoing edges..." << std::endl;
+    if (debug) std::cerr << "Outgoing edges..." << std::endl;
     IntSet::iterator v;
     for (v = from[id].begin(); v != from[id].end(); v++) 
 	{
@@ -244,7 +286,7 @@ void PointerAnalysis::merge(int id, int target)
     }
          
     // Move all edges v->id to v->target
-    std::cout << "Incoming edges..." << std::endl;
+    if (debug) std::cerr << "Incoming edges..." << std::endl;
     for (v = to[id].begin(); v != to[id].end(); v++) 
 	{
         to[target].insert(*v);
@@ -254,11 +296,11 @@ void PointerAnalysis::merge(int id, int target)
 
     // Mark the representative vertex
     vertices[id] = target;
-    std::cout << "Removing vertice " << id << " from active." << std::endl;
+    if (debug) std::cerr << "Removing vertice " << id << " from active." << std::endl;
 	activeVertices.erase(id);
 
     // Merge Stores
-    std::cout << "Stores..." << std::endl;
+    if (debug) std::cerr << "Stores..." << std::endl;
     for (v = stores[id].begin(); v != stores[id].end(); v++) 
 	{
         stores[target].insert(*v);
@@ -266,7 +308,7 @@ void PointerAnalysis::merge(int id, int target)
     stores[id].clear(); // Not really needed, I think
 
     // Merge Loads
-    std::cout << "Loads..." << std::endl;
+    if (debug) std::cerr << "Loads..." << std::endl;
     for (v = loads[id].begin(); v != loads[id].end(); v++) 
 	{
         loads[target].insert(*v);
@@ -274,12 +316,12 @@ void PointerAnalysis::merge(int id, int target)
     loads[id].clear();
 
     // Join Points-To set
-    std::cout << "Points-to-set..." << std::endl;
+    if (debug) std::cerr << "Points-to-set..." << std::endl;
     for (v = pointsToSet[id].begin(); v != pointsToSet[id].end(); v++) 
 	{
         pointsToSet[target].insert(*v);
     }
-    std::cout << "End of merging..." << std::endl;
+    if (debug) std::cerr << "End of merging..." << std::endl;
 }
 
 // ============================================= //
@@ -294,21 +336,27 @@ void PointerAnalysis::solve()
     IntSet WorkSet = activeVertices;
     IntSet NewWorkSet;
         
-    std::cout << "Starting..." << std::endl;
+    if (debug) std::cerr << "Starting the analysis" << std::endl;
 
     while (!WorkSet.empty()) {
         int Node = *WorkSet.begin();
         WorkSet.erase(WorkSet.begin());
         
-        std::cout << "New Step" << std::endl;
-        std::cout << "Current Node: " << Node << std::endl;    
+        if (debug) 
+        {
+            std::cerr << ">> New Step" << std::endl;
+            std::cerr << " - Current Node: " << Node << std::endl;    
+        }
 
         // For V in pts(Node)
         IntSet::iterator V;
         for (V = pointsToSet[Node].begin(); V != pointsToSet[Node].end(); V++ ) 
 		{
-            std::cout << "Current V: " << *V << std::endl;
-            std::cout << "Load Constraints" << std::endl;
+            if (debug)
+            {
+                std::cerr << "   - Current V: " << *V << std::endl;
+                std::cerr << "   - Load Constraints" << std::endl;
+            }
             // For every constraint A = *Node
             IntSet::iterator A;
             for (A=loads[Node].begin(); A != loads[Node].end(); A++) 
@@ -316,12 +364,12 @@ void PointerAnalysis::solve()
                 // If V->A not in Graph
                 if (from[*V].find(*A) == from[*V].end()) 
 				{
-                    addEdge(*A, *V);
+                    addEdge(*V, *A);
                     NewWorkSet.insert(*V);
                 }
             }
 
-            std::cout << "Store Constraints" << std::endl;
+            if (debug) std::cerr << "   - Store Constraints" << std::endl;
             // For every constraint *Node = B
             IntSet::iterator B;
             for (B=stores[Node].begin(); B != stores[Node].end(); B++) 
@@ -329,13 +377,13 @@ void PointerAnalysis::solve()
                 // If B->V not in Graph
                 if (from[*B].find(*V) == from[*B].end()) 
 				{
-                    addEdge(*V, *B);
+                    addEdge(*B, *V);
                     NewWorkSet.insert(*B);
                 }
             }
         }
 		
-        std::cout << "End step" << std::endl;
+        if (debug) std::cerr << " - End step" << std::endl;
         // For Node->Z in Graph
         IntSet::iterator Z = from[Node].begin();
         while (Z != from[Node].end() ) 
@@ -347,16 +395,19 @@ void PointerAnalysis::solve()
             edge += "->";
             edge += ZVal;
 
+            if (debug) std::cerr << " - Comparing pts" << std::endl;
+
             // Compare points-to sets
             if (pointsToSet[ZVal] == pointsToSet[Node] && R.find(edge) == R.end() ) 
 			{
-                std::cout << "Removing cycles..." << std::endl;
+                if (debug) std::cerr << " - Removing cycles..." << std::endl;
                 removeCycles();
                 R.insert(edge);
-                std::cout << "Cycles removed" << std::endl;
+                if (debug) std::cerr << " - Cycles removed" << std::endl;
             }
 
             // Merge the points-To Set
+            if (debug) std::cerr << " - Merging pts" << std::endl;
             bool changed = false;
             for (V = pointsToSet[Node].begin(); V != pointsToSet[Node].end(); V++) 
 			{
@@ -370,6 +421,8 @@ void PointerAnalysis::solve()
             }
     
             Z = NextZ;
+
+            if (debug) std::cerr << " - End of step" << std::endl;
         }
         
         // Swap WorkSets if needed
@@ -382,12 +435,13 @@ void PointerAnalysis::solve()
 /// Prints the graph to std output
 void PointerAnalysis::print()
 {
-
+    std::cout << "# of Vertices: ";
     std::cout << vertices.size() << std::endl; 
     IntSet::iterator it;
     IntMap::iterator v;
 	
     // Print Vertices Representatives
+    std::cout << "Representatives: " << std::endl;
     for (v = vertices.begin(); v != vertices.end(); v++) 
 	{
         std::cout << v->first << " -> ";
@@ -396,6 +450,7 @@ void PointerAnalysis::print()
     std::cout << std::endl;
 
     // Print Vertices Connections
+    std::cout << "Connections (Graph): " << std::endl;
     for (it = activeVertices.begin(); it != activeVertices.end(); it++) 
 	{
         std::cout << *it << " -> ";
@@ -410,11 +465,12 @@ void PointerAnalysis::print()
     std::cout << std::endl;
     
     // Prints PointsTo sets
-    for (it = activeVertices.begin(); it != activeVertices.end(); it++) 
+    std::cout << "Points-to-set: " << std::endl;
+    for (v = vertices.begin(); v != vertices.end(); v++) 
 	{
-        std::cout << *it << " -> {";
+        std::cout << v->first << " -> {";
         IntSet::iterator n;
-        for (n = pointsToSet[*it].begin(); n != pointsToSet[*it].end();  n++) 
+        for (n = pointsToSet[v->first].begin(); n != pointsToSet[v->first].end();  n++) 
         {
             std::cout << *n << ", ";
         }
