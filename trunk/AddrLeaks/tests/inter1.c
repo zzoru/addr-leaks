@@ -1,6 +1,6 @@
 #include <stdio.h>
 
-/* Test the interprocedural analysis.
+/* Test an indirect leak via interprocedural analysis.
  */
 
 int fun(int *a, int b) {
