@@ -979,6 +979,21 @@ void AddrLeaks::buildMyGraph(Function &F) {
                     
                     break;
                 }
+                case Instruction::IntToPtr:
+                {
+                    Value *v = I->getOperand(0);
+                    
+                    graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(v, VALUE));
+                    vertices1.insert(std::make_pair(I, VALUE));
+                    vertices1.insert(std::make_pair(v, VALUE));
+                    
+                    sources.insert(std::make_pair(I, VALUE));
+
+                    setFunction(F, I);
+                    setFunction(F, v);
+                    
+                    break;
+                }
                 case Instruction::BitCast:
                 {
                     Value *v = I->getOperand(0);
@@ -1075,6 +1090,7 @@ void AddrLeaks::buildMyGraph(Function &F) {
                             switch (CE->getOpcode()) {
                                 case Instruction::GetElementPtr:
                                 case Instruction::PtrToInt:
+                                case Instruction::IntToPtr:
                                     sources.insert(std::make_pair(CE, VALUE));
 
                                     break;
