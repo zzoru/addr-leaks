@@ -905,20 +905,19 @@ void AddrLeaks::addConstraints(Function &F) {
 }
 
 void AddrLeaks::buildMemoryGraph() {
-    std::map<int, IntSet> pointsTo = pointerAnalysis->allPointsTo();
+    IntSetMap pointsTo = pointerAnalysis->allPointsTo();
 
-    for (std::map<int, IntSet>::const_iterator it = pointsTo.begin(), e = pointsTo.end(); it != e; it++) {
+    for (IntSetMap::const_iterator it = pointsTo.begin(), e = pointsTo.end(); it != e; it++) {
         int src = it->first;
 
         for (IntSet::const_iterator it2 = it->second.begin(), 
-            e = it->second.end(); it2 != e; it2++) {
+                e = it->second.end(); it2 != e; it2++) {
             int dst = *it2;
 
             if (int2value.count(src) && int2value.count(dst))
                 memoryGraphVV[std::make_pair(int2value[src], VALUE)].insert(std::make_pair(int2value[dst], ADDR));
             else if (!int2value.count(src) && int2value.count(dst))
-                memoryGraphiV[std::make_pair(src,
-                VALUE)].insert(std::make_pair(int2value[dst], ADDR));
+                memoryGraphiV[std::make_pair(src, VALUE)].insert(std::make_pair(int2value[dst], ADDR));
             else if (int2value.count(src) && !int2value.count(dst))
                 memoryGraphVi[std::make_pair(int2value[src], VALUE)].insert(std::make_pair(dst, ADDR));
             else if (!int2value.count(src) && !int2value.count(dst))
