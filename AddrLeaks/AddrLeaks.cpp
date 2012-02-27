@@ -107,6 +107,7 @@ namespace {
         void setFunction(Function &F, Value *v); 
         int getNewMemoryBlock();
         int getNewInt();
+        void printInt2ValueTable();
     };
 }
 
@@ -440,6 +441,7 @@ void AddrLeaks::matchFormalWithActualParameters(Function &F) {
 
             int a = Value2Int(formalArg);
             int b = Value2Int(actualArg);
+            errs() << "BASE: " << a << "\t" << b << "\n";
             pointerAnalysis->addBase(a, b);
         }
     }
@@ -482,6 +484,7 @@ void AddrLeaks::matchReturnValueWithReturnVariable(Function &F) {
             
             int a = Value2Int(CS.getCalledFunction());
             int b = Value2Int(*it);
+            errs() << "BASE: " << a << "\t" << b << "\n";
             pointerAnalysis->addBase(a, b);
         }
     }
@@ -540,6 +543,19 @@ void AddrLeaks::matchReturnValueWithReturnVariable2(Function &F) {
     }
 }
 
+void AddrLeaks::printInt2ValueTable() {
+    errs() << "### Int2Value Table ###\n";
+    
+    for (int i = 1; i < nextMemoryBlock; i++) {
+        if (int2value.count(i))
+            errs() << i << "\t" << *int2value[i] << "\n";
+        else
+            errs() << i << "\t" << "m" << i << "\n";
+    }
+
+    errs() << "######################\n";
+}
+
 bool AddrLeaks::runOnModule(Module &M) {
     struct timeval startTime, endTime;
     struct rusage ru;
@@ -576,6 +592,10 @@ bool AddrLeaks::runOnModule(Module &M) {
     ss >> deltaTimeStr;
 
     errs() << deltaTimeStr << " Time to perform the pointer analysis\n";
+
+    pointerAnalysis->print();
+
+    printInt2ValueTable();
 
     // Build memory graph from pointsTo sets
 
@@ -746,6 +766,7 @@ void AddrLeaks::addConstraints(Function &F) {
                         }
 
                         int a = Value2Int(I);
+                        errs() << "ADDR: " << a << "\t" << mems[0] << "\n";
                         pointerAnalysis->addAddr(a, mems[0]);
                         sources2.insert(std::make_pair(mems[0], ADDR));
                     }
@@ -788,6 +809,7 @@ void AddrLeaks::addConstraints(Function &F) {
 
                     for (unsigned i = 0; i < mems.size(); i++) {
                         int a = Value2Int(I);
+                        errs() << "ADDR: " << a << "\t" << mems[i] << "\n";
                         pointerAnalysis->addAddr(a, mems[i]);
                         sources2.insert(std::make_pair(mems[i], ADDR));
                     }
@@ -814,10 +836,12 @@ void AddrLeaks::addConstraints(Function &F) {
                         
                         std::vector<int> mems = memoryBlock[v];
                         int a = Value2Int(I);
+                        errs() << "BASE: " << a << "\t" << mems[pos] << "\n";
                         pointerAnalysis->addBase(a, mems[pos]);
                     } else {
                         int a = Value2Int(I);
                         int b = Value2Int(v);
+                        errs() << "BASE: " << a << "\t" << b << "\n";
                         pointerAnalysis->addBase(a, b);
                     }
 
@@ -831,6 +855,7 @@ void AddrLeaks::addConstraints(Function &F) {
                     if (v->getType()->isPointerTy()) {
                         int a = Value2Int(I);
                         int b = Value2Int(v);
+                        errs() << "BASE: " << a << "\t" << b << "\n";
                         pointerAnalysis->addBase(a, b);
                     }
 
@@ -847,6 +872,7 @@ void AddrLeaks::addConstraints(Function &F) {
                         int a = Value2Int(ptr);
                         int b = Value2Int(v);
 
+                        errs() << "STORE: " << a << "\t" << b << "\n";
                         pointerAnalysis->addStore(a, b);
                     }
 
@@ -860,6 +886,7 @@ void AddrLeaks::addConstraints(Function &F) {
 
                     int a = Value2Int(I);
                     int b = Value2Int(ptr);
+                    errs() << "LOAD: " << a << "\t" << b << "\n";
                     pointerAnalysis->addLoad(a, b);
                     break;
                 }
