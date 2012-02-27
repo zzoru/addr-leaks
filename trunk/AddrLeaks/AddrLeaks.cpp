@@ -49,7 +49,14 @@ STATISTIC(buggyPathsSize, "Size of buggy paths");
 
 namespace {
     // AddrLeaks - The inter-procedural address leak analysis
+    
     struct AddrLeaks : public ModulePass {
+        enum nodeType {ADDR, VALUE};
+        typedef std::pair<Value*, nodeType> VNode;
+        typedef std::pair<int, nodeType> INode;
+        typedef std::set<VNode> VNodeSet;
+        typedef std::set<INode> INodeSet;
+
         static char ID;
         AddrLeaks() : ModulePass(ID) { 
             nextMemoryBlock = 1;
@@ -59,29 +66,28 @@ namespace {
 
       private:
         int nextMemoryBlock;
-        enum nodeType {ADDR, VALUE};
 
-        std::set<std::pair<Value*, nodeType> > sources;
-        std::set<std::pair<int, nodeType> > sources2;
+        VNodeSet sources;
+        INodeSet sources2;
         std::set<Value*> sinks;
         
-        std::set<std::pair<Value*, nodeType> > visited;
-        std::set<std::pair<int, nodeType> > visited2;
+        VNodeSet visited;
+        INodeSet visited2;
 
-        std::set<std::pair<Value*, nodeType> > visited3;
-        std::set<std::pair<int, nodeType> > visited4;
+        VNodeSet visited3;
+        INodeSet visited4;
 
-        std::set<std::pair<Value*, nodeType> > vertices1;
-        std::set<std::pair<int, nodeType> > vertices2;
+        VNodeSet vertices1;
+        INodeSet vertices2;
 
-        std::map<std::pair<Value*, nodeType>, std::set<std::pair<Value*, nodeType> > > memoryGraphVV;
-        std::map<std::pair<Value*, nodeType>, std::set<std::pair<int, nodeType> > > memoryGraphVi;
-        std::map<std::pair<int, nodeType>, std::set<std::pair<int, nodeType> > > memoryGraphii;
-        std::map<std::pair<int, nodeType>, std::set<std::pair<Value*, nodeType> > > memoryGraphiV;
+        std::map<VNode, VNodeSet> memoryGraphVV;
+        std::map<VNode, INodeSet> memoryGraphVi;
+        std::map<INode, INodeSet> memoryGraphii;
+        std::map<INode, VNodeSet> memoryGraphiV;
 
-        std::map<std::pair<Value*, nodeType>, std::set<std::pair<Value*, nodeType> > > graphVV;
-        std::map<std::pair<Value*, nodeType>, std::set<std::pair<int, nodeType> > > graphVi;
-        std::map<std::pair<int, nodeType>, std::set<std::pair<Value*, nodeType> > > graphiV;
+        std::map<VNode, VNodeSet> graphVV;
+        std::map<VNode, INodeSet> graphVi;
+        std::map<INode, VNodeSet> graphiV;
 
         std::map<Value*, std::vector<int> > memoryBlock;
         std::map<Value*, Function*> function;
@@ -134,7 +140,7 @@ bool AddrLeaks::dfs(int v, nodeType t) {
     if (sources2.find(std::make_pair(v, t)) != sources2.end())
         return true;
     
-    for (std::set<std::pair<Value*, nodeType> >::const_iterator it = graphiV[std::make_pair(v, t)].begin(); 
+    for (VNodeSet::const_iterator it = graphiV[std::make_pair(v, t)].begin(); 
             it != graphiV[std::make_pair(v, t)].end(); ++it) {
         Value *vv = (*it).first;
         nodeType tt = (*it).second;
@@ -157,7 +163,7 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
     if (sources.find(std::make_pair(v, t)) != sources.end())
         return true;
     
-    for (std::set<std::pair<Value*, nodeType> >::const_iterator it = graphVV[std::make_pair(v, t)].begin(); 
+    for (VNodeSet::const_iterator it = graphVV[std::make_pair(v, t)].begin(); 
             it != graphVV[std::make_pair(v, t)].end(); ++it) {
         Value *vv = (*it).first;
         nodeType tt = (*it).second;
@@ -168,7 +174,7 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
         }
     }
 
-    for (std::set<std::pair<int, nodeType> >::const_iterator it = graphVi[std::make_pair(v, t)].begin(); 
+    for (INodeSet::const_iterator it = graphVi[std::make_pair(v, t)].begin(); 
             it != graphVi[std::make_pair(v, t)].end(); ++it) {
         int vv = (*it).first;
         nodeType tt = (*it).second;
@@ -195,7 +201,7 @@ int AddrLeaks::countBuggyPathSize(int v, nodeType t) {
     if (sources2.find(std::make_pair(v, t)) != sources2.end())
         return 1;
     
-    for (std::set<std::pair<Value*, nodeType> >::const_iterator it = graphiV[std::make_pair(v, t)].begin(); 
+    for (VNodeSet::const_iterator it = graphiV[std::make_pair(v, t)].begin(); 
             it != graphiV[std::make_pair(v, t)].end(); ++it) {
         Value *vv = (*it).first;
         nodeType tt = (*it).second;
@@ -217,7 +223,7 @@ int AddrLeaks::countBuggyPathSize(Value* v, nodeType t) {
     if (sources.find(std::make_pair(v, t)) != sources.end())
         return 1;
     
-    for (std::set<std::pair<Value*, nodeType> >::const_iterator it = graphVV[std::make_pair(v, t)].begin(); 
+    for (VNodeSet::const_iterator it = graphVV[std::make_pair(v, t)].begin(); 
             it != graphVV[std::make_pair(v, t)].end(); ++it) {
         Value *vv = (*it).first;
         nodeType tt = (*it).second;
@@ -225,7 +231,7 @@ int AddrLeaks::countBuggyPathSize(Value* v, nodeType t) {
         total += countBuggyPathSize(vv, tt);
     }
 
-    for (std::set<std::pair<int, nodeType> >::const_iterator it = graphVi[std::make_pair(v, t)].begin(); 
+    for (INodeSet::const_iterator it = graphVi[std::make_pair(v, t)].begin(); 
             it != graphVi[std::make_pair(v, t)].end(); ++it) {
         int vv = (*it).first;
         nodeType tt = (*it).second;
@@ -247,14 +253,14 @@ void AddrLeaks::printDot(std::string moduleName) {
 
     // Print memory graph
 
-    for (std::map<std::pair<Value*, nodeType>, std::set<std::pair<int, nodeType> > >::const_iterator it = memoryGraphVi.begin();
+    for (std::map<VNode, INodeSet>::const_iterator it = memoryGraphVi.begin();
             it != memoryGraphVi.end(); ++it) {
         Value *src = it->first.first;
         nodeType srcType = it->first.second;
         Function *f = function[src];
         std::string srcFunctionName = f ? f->getName().str() : "global";
  
-        for (std::set<std::pair<int, nodeType> >::const_iterator it2 = it->second.begin(); it2 != it->second.end();
+        for (INodeSet::const_iterator it2 = it->second.begin(); it2 != it->second.end();
                 ++it2) {
             int dst = (*it2).first;
             nodeType dstType = (*it2).second;
@@ -269,13 +275,13 @@ void AddrLeaks::printDot(std::string moduleName) {
         }
     }
 
-    for (std::map<std::pair<int, nodeType>, std::set<std::pair<int, nodeType> > >::const_iterator it = memoryGraphii.begin();
+    for (std::map<INode, INodeSet>::const_iterator it = memoryGraphii.begin();
             it != memoryGraphii.end(); ++it) {
         int src = it->first.first;
         nodeType srcType = it->first.second;
         std::string srcFunctionName = "memory";
  
-        for (std::set<std::pair<int, nodeType> >::const_iterator it2 = it->second.begin(); it2 != it->second.end();
+        for (INodeSet::const_iterator it2 = it->second.begin(); it2 != it->second.end();
                 ++it2) {
             int dst = (*it2).first;
             nodeType dstType = (*it2).second;
@@ -286,13 +292,13 @@ void AddrLeaks::printDot(std::string moduleName) {
         }
     }
 
-    for (std::map<std::pair<int, nodeType>, std::set<std::pair<Value*, nodeType> > >::const_iterator it = memoryGraphiV.begin();
+    for (std::map<INode, VNodeSet>::const_iterator it = memoryGraphiV.begin();
             it != memoryGraphiV.end(); ++it) {
         int src = it->first.first;
         nodeType srcType = it->first.second;
         std::string srcFunctionName = "memory";
  
-        for (std::set<std::pair<Value*, nodeType> >::const_iterator it2 = it->second.begin(); it2 != it->second.end();
+        for (VNodeSet::const_iterator it2 = it->second.begin(); it2 != it->second.end();
                 ++it2) {
             Value *dst = (*it2).first;
             nodeType dstType = (*it2).second;
@@ -308,14 +314,14 @@ void AddrLeaks::printDot(std::string moduleName) {
         }
     }
 
-    for (std::map<std::pair<Value*, nodeType>, std::set<std::pair<Value*, nodeType> > >::const_iterator it = memoryGraphVV.begin();
+    for (std::map<VNode, VNodeSet>::const_iterator it = memoryGraphVV.begin();
             it != memoryGraphVV.end(); ++it) {
         Value *src = it->first.first;
         nodeType srcType = it->first.second;
         Function *f = function[src];
         std::string srcFunctionName = f ? f->getName().str() : "global";
  
-        for (std::set<std::pair<Value*, nodeType> >::const_iterator it2 = it->second.begin(); it2 != it->second.end();
+        for (VNodeSet::const_iterator it2 = it->second.begin(); it2 != it->second.end();
                 ++it2) {
             Value *dst = (*it2).first;
             nodeType dstType = (*it2).second;
@@ -341,14 +347,14 @@ void AddrLeaks::printDot(std::string moduleName) {
 
     // Print my graph
 
-    for (std::map<std::pair<Value*, nodeType>, std::set<std::pair<Value*, nodeType> > >::const_iterator it = graphVV.begin();
+    for (std::map<VNode, VNodeSet>::const_iterator it = graphVV.begin();
             it != graphVV.end(); ++it) {
         Value *src = it->first.first;
         nodeType srcType = it->first.second;
         Function *f = function[src];
         std::string srcFunctionName = f ? f->getName().str() : "global";
  
-        for (std::set<std::pair<Value*, nodeType> >::const_iterator it2 = it->second.begin(); it2 != it->second.end();
+        for (VNodeSet::const_iterator it2 = it->second.begin(); it2 != it->second.end();
                 ++it2) {
             Value *dst = (*it2).first;
             nodeType dstType = (*it2).second;
@@ -370,14 +376,14 @@ void AddrLeaks::printDot(std::string moduleName) {
         }
     }
 
-    for (std::map<std::pair<Value*, nodeType>, std::set<std::pair<int, nodeType> > >::const_iterator it = graphVi.begin();
+    for (std::map<VNode, INodeSet>::const_iterator it = graphVi.begin();
             it != graphVi.end(); ++it) {
         Value *src = it->first.first;
         nodeType srcType = it->first.second;
         Function *f = function[src];
         std::string srcFunctionName = f ? f->getName().str() : "global";
  
-        for (std::set<std::pair<int, nodeType> >::const_iterator it2 = it->second.begin(); it2 != it->second.end();
+        for (INodeSet::const_iterator it2 = it->second.begin(); it2 != it->second.end();
                 ++it2) {
             int dst = (*it2).first;
             nodeType dstType = (*it2).second;
@@ -392,13 +398,13 @@ void AddrLeaks::printDot(std::string moduleName) {
         }
     }
 
-    for (std::map<std::pair<int, nodeType>, std::set<std::pair<Value*, nodeType> > >::const_iterator it = graphiV.begin();
+    for (std::map<INode, VNodeSet>::const_iterator it = graphiV.begin();
             it != graphiV.end(); ++it) {
         int src = it->first.first;
         nodeType srcType = it->first.second;
         std::string srcFunctionName = "memory";
  
-        for (std::set<std::pair<Value*, nodeType> >::const_iterator it2 = it->second.begin(); it2 != it->second.end();
+        for (VNodeSet::const_iterator it2 = it->second.begin(); it2 != it->second.end();
                 ++it2) {
             Value *dst = (*it2).first;
             nodeType dstType = (*it2).second;
@@ -449,10 +455,12 @@ void AddrLeaks::matchFormalWithActualParameters(Function &F) {
 
 
 int AddrLeaks::Value2Int(Value *v) {
+    int n;
+
     if (value2int.count(v))
         return value2int[v];
     
-    int n = getNewInt();
+    n = getNewInt();
     value2int[v] = n;
     int2value[n] = v;
 
@@ -888,6 +896,7 @@ void AddrLeaks::addConstraints(Function &F) {
                     int b = Value2Int(ptr);
                     errs() << "LOAD: " << a << "\t" << b << "\n";
                     pointerAnalysis->addLoad(a, b);
+
                     break;
                 }
             }
@@ -1040,7 +1049,7 @@ void AddrLeaks::buildMyGraph(Function &F) {
                     Value *v = SI->getValueOperand();
                     Value *ptr = SI->getPointerOperand();
 
-                    for (std::set<std::pair<int, nodeType> >::const_iterator it = memoryGraphVi[std::make_pair(ptr, VALUE)].begin();
+                    for (INodeSet::const_iterator it = memoryGraphVi[std::make_pair(ptr, VALUE)].begin();
                             it != memoryGraphVi[std::make_pair(ptr, VALUE)].end(); ++it) {
                         int vv = (*it).first;
                         graphiV[std::make_pair(vv, VALUE)].insert(std::make_pair(v, VALUE));
@@ -1048,7 +1057,7 @@ void AddrLeaks::buildMyGraph(Function &F) {
                         vertices1.insert(std::make_pair(v, VALUE));
                     }
                     
-                    for (std::set<std::pair<Value*, nodeType> >::const_iterator it = memoryGraphVV[std::make_pair(ptr, VALUE)].begin();
+                    for (VNodeSet::const_iterator it = memoryGraphVV[std::make_pair(ptr, VALUE)].begin();
                             it != memoryGraphVV[std::make_pair(ptr, VALUE)].end(); ++it) {
                         Value* vv = (*it).first;
                         graphVV[std::make_pair(vv, VALUE)].insert(std::make_pair(v, VALUE));
@@ -1067,7 +1076,7 @@ void AddrLeaks::buildMyGraph(Function &F) {
                     LoadInst *LI = dyn_cast<LoadInst>(I);
                     Value *ptr = LI->getPointerOperand();
 
-                    for (std::set<std::pair<int, nodeType> >::const_iterator it = memoryGraphVi[std::make_pair(ptr, VALUE)].begin();
+                    for (INodeSet::const_iterator it = memoryGraphVi[std::make_pair(ptr, VALUE)].begin();
                             it != memoryGraphVi[std::make_pair(ptr, VALUE)].end(); ++it) {
                         int vv = (*it).first;
                         graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(vv, VALUE));
@@ -1075,7 +1084,7 @@ void AddrLeaks::buildMyGraph(Function &F) {
                         vertices2.insert(std::make_pair(vv, VALUE));
                     }
                     
-                    for (std::set<std::pair<Value*, nodeType> >::const_iterator it = memoryGraphVV[std::make_pair(ptr, VALUE)].begin();
+                    for (VNodeSet::const_iterator it = memoryGraphVV[std::make_pair(ptr, VALUE)].begin();
                             it != memoryGraphVV[std::make_pair(ptr, VALUE)].end(); ++it) {
                         Value* vv = (*it).first;
                         graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(vv, VALUE));
