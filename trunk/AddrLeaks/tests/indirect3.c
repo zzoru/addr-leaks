@@ -8,10 +8,6 @@ int main() {
     int *b = &a;
     int *c = &a;
 
-    printf("%d\n", a);
-    printf("%d\n", *b);
-    printf("%d\n", *c);
-   
     *b = (int)&a;
 
     printf("%d\n", a);
