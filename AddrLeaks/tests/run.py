@@ -33,30 +33,24 @@ for filename in files:
         elif filename == 'direct4.bc':
             if result.find('File: direct4.c, Line: 11') == -1: passed = False
         elif filename == 'indirect1.bc':
-            if result.find('File: indirect1.c, Line: 10') != -1: passed = False
+            if result.find('File: indirect1.c, Line: 10') == -1: passed = False
             if result.find('File: indirect1.c, Line: 14') == -1: passed = False
         elif filename == 'indirect2.bc':
-            if result.find('File: indirect2.c, Line: 12') != -1: passed = False
-            if result.find('File: indirect2.c, Line: 13') != -1: passed = False
-            if result.find('File: indirect2.c, Line: 14') != -1: passed = False
-            if result.find('File: indirect2.c, Line: 15') != -1: passed = False
-            if result.find('File: indirect2.c, Line: 19') == -1: passed = False
-            if result.find('File: indirect2.c, Line: 20') == -1: passed = False
-            if result.find('File: indirect2.c, Line: 21') == -1: passed = False
-            if result.find('File: indirect2.c, Line: 22') == -1: passed = False
+            if result.find('File: indirect2.c, Line: 17') != -1: passed = False
+            if result.find('File: indirect2.c, Line: 18') != -1: passed = False
+            if result.find('File: indirect2.c, Line: 19') != -1: passed = False
+            if result.find('File: indirect2.c, Line: 20') != -1: passed = False
+            if result.find('File: indirect2.c, Line: 24') == -1: passed = False
+            if result.find('File: indirect2.c, Line: 25') == -1: passed = False
+            if result.find('File: indirect2.c, Line: 26') == -1: passed = False
+            if result.find('File: indirect2.c, Line: 27') == -1: passed = False
         elif filename == 'indirect3.bc':
-            if result.find('File: indirect3.c, Line: 11') != -1: passed = False
-            if result.find('File: indirect3.c, Line: 12') != -1: passed = False
-            if result.find('File: indirect3.c, Line: 13') != -1: passed = False
-            if result.find('File: indirect3.c, Line: 17') == -1: passed = False
-            if result.find('File: indirect3.c, Line: 18') == -1: passed = False
-            if result.find('File: indirect3.c, Line: 19') == -1: passed = False
+            if result.find('File: indirect3.c, Line: 13') == -1: passed = False
+            if result.find('File: indirect3.c, Line: 14') == -1: passed = False
+            if result.find('File: indirect3.c, Line: 15') == -1: passed = False
         elif filename == 'indirect4.bc':
-            if result.find('File: indirect4.c, Line: 11') == -1: passed = False
-            if result.find('File: indirect4.c, Line: 14') != -1: passed = False
-            if result.find('File: indirect4.c, Line: 15') != -1: passed = False
-            if result.find('File: indirect4.c, Line: 18') == -1: passed = False
-            if result.find('File: indirect4.c, Line: 19') == -1: passed = False
+            if result.find('File: indirect4.c, Line: 12') != -1: passed = False
+            if result.find('File: indirect4.c, Line: 13') != -1: passed = False
         elif filename == 'array1.bc':
             if result.find('File: array1.c, Line: 9') == -1: passed = False
             if result.find('File: array1.c, Line: 10') != -1: passed = False
@@ -111,6 +105,8 @@ for filename in files:
         elif filename == 'strings1.bc':
             if result.find('File: strings1.c, Line: 12') == -1: passed = False
             if result.find('File: strings1.c, Line: 15') == -1: passed = False
+        elif filename == 'list1.bc':
+            passed = False
 
         if passed:
             print colored('\tPASSED', 'green')

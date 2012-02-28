@@ -1,5 +1,8 @@
 #include <stdio.h>
 
+/* Test direct leaks with the interprocedural analysis.
+ */
+
 int f1() {
     return (int)&f1;
 }
