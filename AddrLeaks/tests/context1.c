@@ -9,12 +9,10 @@ void fun(int n) {
 
 int main() {
     int a = 123;
+    int b = (int)&b;
 
     fun(a);
-
-    a = (int)&a;
-
-    fun(a);
+    fun(b);
 
     return 0;
 }
