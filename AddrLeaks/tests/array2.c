@@ -1,26 +1,24 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-/* Test an indirect leak via array with random index.
+/* Test leak via array with random index.
  */
 
 int main() {
     int a[5] = {1, 2, 3, 4, 5};
-    int i;
+    int b[5] = {1, 2, 3, 4, 5};
+    int i = rand() % 5;
 
-    printf("%d\n", a);
-    printf("%d\n", a[0]);
-    printf("%d\n", a[4]);
-    printf("%d\n", *(a+2));
+    printf("%d\n", a[i]);
 
-    i = rand() % 5;
-    a[i] = (int)a;
+    b[i] = (int)&b;
 
-    printf("%d\n", a[0]);
-    printf("%d\n", a[1]);
-    printf("%d\n", a[2]);
-    printf("%d\n", a[3]);
-    printf("%d\n", *(a+2));
+    printf("%d\n", b[0]);
+    printf("%d\n", b[1]);
+    printf("%d\n", b[2]);
+    printf("%d\n", b[3]);
+    printf("%d\n", b[4]);
+    printf("%d\n", b[i]);
 
     return 0;
 }
