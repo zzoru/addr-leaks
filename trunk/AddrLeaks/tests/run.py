@@ -114,6 +114,9 @@ for filename in files:
         elif filename == 'flow1.bc':
             if result.find('File: flow1.c, Line: 10') != -1: passed = False
             if result.find('File: flow1.c, Line: 14') == -1: passed = False
+        elif filename == 'flow2.bc':
+            if result.find('File: flow2.c, Line: 9') != -1: passed = False
+            if result.find('File: flow2.c, Line: 13') == -1: passed = False
 
         if passed:
             print template.format(filename, colored('\tPASSED', 'green'))
