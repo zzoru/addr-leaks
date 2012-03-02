@@ -18,7 +18,7 @@ for filename in files:
 
         _file = open(filename, 'rb')
         p = subprocess.Popen(['opt', '-load', '../../../../Release/lib/AddrLeaks.so',
-                              '-instnamer', '-internalize', '-inline', '-addrleaks'],
+                              '-instnamer', '-internalize', '-inline', '-globaldce', '-addrleaks'],
                              shell=False, stdin=_file, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         result = p.communicate()[1]
