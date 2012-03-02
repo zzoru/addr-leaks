@@ -17,7 +17,8 @@ for filename in files:
     if filename.endswith('.bc'):
         _file = open(filename, 'rb')
         p = subprocess.Popen(['opt', '-load', '../../../../Release/lib/AddrLeaks.so',
-                              '-instnamer', '-internalize', '-inline', '-globaldce', '-addrleaks'],
+                              '-mem2reg', '-instnamer', '-internalize', '-inline', 
+                              '-globaldce', '-addrleaks'],
                              shell=False, stdin=_file, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         result = p.communicate()[1]
@@ -72,6 +73,12 @@ for filename in files:
             if result.find('File: array2.c, Line: 19') == -1: passed = False
             if result.find('File: array2.c, Line: 20') == -1: passed = False
             if result.find('File: array2.c, Line: 21') == -1: passed = False
+        elif filename == 'array3.bc':
+            if result.find('File: array3.c, Line: 15') != -1: passed = False
+            if result.find('File: array3.c, Line: 17') == -1: passed = False
+        elif filename == 'array4.bc':
+            if result.find('File: array4.c, Line: 17') != -1: passed = False
+            if result.find('File: array4.c, Line: 20') == -1: passed = False
         elif filename == 'struct1.bc':
             if result.find('File: struct1.c, Line: 15') != -1: passed = False
             if result.find('File: struct1.c, Line: 16') != -1: passed = False
@@ -117,6 +124,9 @@ for filename in files:
         elif filename == 'flow2.bc':
             if result.find('File: flow2.c, Line: 9') != -1: passed = False
             if result.find('File: flow2.c, Line: 13') == -1: passed = False
+        elif filename == 'flow3.bc':
+            if result.find('File: flow3.c, Line: 9') != -1: passed = False
+            if result.find('File: flow3.c, Line: 13') == -1: passed = False
 
         if passed:
             print template.format(filename, colored('\tPASSED', 'green'))
