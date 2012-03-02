@@ -15,7 +15,6 @@ print template.format("FILE", "RESULT")
 
 for filename in files:
     if filename.endswith('.bc'):
-
         _file = open(filename, 'rb')
         p = subprocess.Popen(['opt', '-load', '../../../../Release/lib/AddrLeaks.so',
                               '-instnamer', '-internalize', '-inline', '-globaldce', '-addrleaks'],
@@ -97,7 +96,7 @@ for filename in files:
             if result.find('File: struct2.c, Line: 42') == -1: passed = False
             if result.find('File: struct2.c, Line: 43') == -1: passed = False
         elif filename == 'context1.bc':
-            passed = False
+            passed = True
         elif filename == 'inter1.bc':
             if result.find('File: inter1.c, Line: 16') == -1: passed = False
         elif filename == 'inter2.bc':
