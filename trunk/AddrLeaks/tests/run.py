@@ -99,8 +99,7 @@ for filename in files:
         elif filename == 'context1.bc':
             passed = False
         elif filename == 'inter1.bc':
-            if result.find('File: inter1.c, Line: 14') != -1: passed = False
-            if result.find('File: inter1.c, Line: 18') == -1: passed = False
+            if result.find('File: inter1.c, Line: 16') == -1: passed = False
         elif filename == 'inter2.bc':
             if result.find('File: inter2.c, Line: 13') == -1: passed = False
             if result.find('File: inter2.c, Line: 14') == -1: passed = False
