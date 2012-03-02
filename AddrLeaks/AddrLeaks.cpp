@@ -1064,6 +1064,28 @@ void AddrLeaks::buildMyGraph(Function &F) {
                         vertices1.insert(std::make_pair(v, VALUE));
                     }
 
+                    // Verify if the instruction has constant expressions that
+                    // read addresses of variables
+                    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(v)) {
+                        switch (CE->getOpcode()) {
+                            case Instruction::GetElementPtr:
+                            case Instruction::PtrToInt:
+                            case Instruction::IntToPtr:
+                                sources.insert(std::make_pair(CE, VALUE));
+
+                                break;
+                            case Instruction::BitCast:
+                            {
+                                BitCastInst *CI = dyn_cast<BitCastInst>(CE);
+
+                                if (CI && CI->getDestTy()->isPointerTy())
+                                    sources.insert(std::make_pair(CE, VALUE));
+                                
+                                break;
+                            }
+                        } 
+                    }
+
                     setFunction(F, I);
                     setFunction(F, v);
                     setFunction(F, ptr);
