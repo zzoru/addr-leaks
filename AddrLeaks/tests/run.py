@@ -10,10 +10,11 @@ files = os.listdir('.')
 files.sort()
 
 print '#### Regression tests ###\n'
+template = "{0:20}|{1:20}"
+print template.format("FILE", "RESULT")
 
 for filename in files:
     if filename.endswith('.bc'):
-        print 'File: ' + filename,
 
         _file = open(filename, 'rb')
         p = subprocess.Popen(['opt', '-load', '../../../../Release/lib/AddrLeaks.so',
@@ -113,8 +114,8 @@ for filename in files:
             if result.find('File: flow1.c, Line: 14') == -1: passed = False
 
         if passed:
-            print colored('\tPASSED', 'green')
+            print template.format(filename, colored('\tPASSED', 'green'))
         else:
-            print colored('\tFAILED', 'red')
+            print template.format(filename, colored('\tFAILED', 'red'))
 
 
