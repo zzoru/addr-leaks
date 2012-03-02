@@ -109,6 +109,8 @@ for filename in files:
             if result.find('File: strings1.c, Line: 15') == -1: passed = False
         elif filename == 'list1.bc':
             passed = False
+        elif filename == 'list2.bc':
+            passed = False
         elif filename == 'flow1.bc':
             if result.find('File: flow1.c, Line: 10') != -1: passed = False
             if result.find('File: flow1.c, Line: 14') == -1: passed = False
