@@ -1,0 +1,9 @@
+TODO List
+
+* Improve array analysis. 
+  - Don't use a single memory block.
+  - Differentiate "a[3] = 123" from "a[i] = 123"
+* Check if the return of extern functions are marked as tainted
+* Fix field-sensitive analysis for structs.
+* Add support for functions that convert numbers (addresses) into strings.
+
