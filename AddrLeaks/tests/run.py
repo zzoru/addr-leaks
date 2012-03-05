@@ -87,9 +87,9 @@ for filename in files:
         if result.find('File: array4.c, Line: 17') != -1: passed = False
         if result.find('File: array4.c, Line: 20') == -1: passed = False
     elif filename == 'struct1.bc':
-        if result.find('File: struct1.c, Line: 15') == -1: passed = False
-        if result.find('File: struct1.c, Line: 16') != -1: passed = False
-        if result.find('File: struct1.c, Line: 17') == -1: passed = False
+        if result.find('File: struct1.c, Line: 19') == -1: passed = False
+        if result.find('File: struct1.c, Line: 20') != -1: passed = False
+        if result.find('File: struct1.c, Line: 21') == -1: passed = False
     elif filename == 'struct2.bc':
         passed = False
         #if result.find('File: struct2.c, Line: 20') != -1: passed = False
