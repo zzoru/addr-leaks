@@ -67,11 +67,11 @@ for filename in files:
         if result.find('File: array1.c, Line: 14') != -1: passed = False
         if result.find('File: array1.c, Line: 15') != -1: passed = False
         if result.find('File: array1.c, Line: 19') == -1: passed = False
-        if result.find('File: array1.c, Line: 20') == -1: passed = False
-        if result.find('File: array1.c, Line: 21') == -1: passed = False
-        if result.find('File: array1.c, Line: 22') == -1: passed = False
+        if result.find('File: array1.c, Line: 20') != -1: passed = False
+        if result.find('File: array1.c, Line: 21') != -1: passed = False
+        if result.find('File: array1.c, Line: 22') != -1: passed = False
         if result.find('File: array1.c, Line: 23') == -1: passed = False
-        if result.find('File: array1.c, Line: 24') == -1: passed = False
+        if result.find('File: array1.c, Line: 24') != -1: passed = False
     elif filename == 'array2.bc':
         if result.find('File: array2.c, Line: 12') != -1: passed = False
         if result.find('File: array2.c, Line: 16') == -1: passed = False
