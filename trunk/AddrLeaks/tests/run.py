@@ -9,7 +9,7 @@ from termcolor import colored
 files = ['direct1.bc', 'direct2.bc', 'direct3.bc', 'direct4.bc',
          'indirect1.bc', 'indirect2.bc', 'indirect3.bc', 'indirect4.bc',
          'array1.bc', 'array2.bc', 'array3.bc', 'array4.bc',
-         'struct1.bc', 'struct2.bc', 
+         'struct1.bc', 'struct2.bc', 'struct3.bc',
          'context1.bc',
          'inter1.bc', 'inter2.bc',
          'strings1.bc',
@@ -95,6 +95,9 @@ for filename in files:
         if result.find('File: struct2.c, Line: 26') != -1: passed = False
         if result.find('File: struct2.c, Line: 27') == -1: passed = False
         if result.find('File: struct2.c, Line: 28') == -1: passed = False
+    elif filename == 'struct3.bc':
+        if result.find('File: struct3.c, Line: 21') != -1: passed = False
+        if result.find('File: struct3.c, Line: 22') == -1: passed = False
     elif filename == 'context1.bc':
         passed = True
     elif filename == 'inter1.bc':
