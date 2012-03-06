@@ -845,7 +845,8 @@ void AddrLeaks::addConstraints(Function &F) {
                         std::vector<int> mems = memoryBlock[v];
                         int a = Value2Int(I);
                         errs() << "BASE: " << a << "\t" << mems[pos] << "\n";
-                        pointerAnalysis->addBase(a, mems[pos]);
+                        //pointerAnalysis->addBase(a, mems[pos]);
+                        pointerAnalysis->addAddr(a, mems[pos]);
                     } else {
                         int a = Value2Int(I);
                         int b = Value2Int(v);
