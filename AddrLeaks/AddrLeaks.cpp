@@ -881,35 +881,41 @@ void AddrLeaks::addConstraints(Function &F) {
                             pointerAnalysis->addAddr(a, mems[pos]);
                         } else {
                             GetElementPtrInst *GEPI2 = dyn_cast<GetElementPtrInst>(v);
+                            
+                            if (!GEPI2)
+                                break;
+                            
                             Value *v2 = GEPI2->getPointerOperand();
 
-                            int i = 0;
-                            unsigned pos = 0;
+                            if (memoryBlock.count(v2)) {
+                                int i = 0;
+                                unsigned pos = 0;
 
-                            for (User::op_iterator it = GEPI2->idx_begin(), e = GEPI2->idx_end(); it != e; ++it) {
-                                if (i == 1)
-                                    pos = cast<ConstantInt>(*it)->getZExtValue();
+                                for (User::op_iterator it = GEPI2->idx_begin(), e = GEPI2->idx_end(); it != e; ++it) {
+                                    if (i == 1)
+                                        pos = cast<ConstantInt>(*it)->getZExtValue();
+                                    
+                                    i++;
+                                }
+
+                                std::vector<int> mems = memoryBlock[v2];
+                                int parent = mems[pos];
+                               
+                                i = 0;
+                                unsigned pos2 = 0;
                                 
-                                i++;
-                            }
+                                for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
+                                    if (i == 1)
+                                        pos2 = cast<ConstantInt>(*it)->getZExtValue();
+                                    
+                                    i++;
+                                }
 
-                            std::vector<int> mems = memoryBlock[v2];
-                            int parent = mems[pos];
-                           
-                            i = 0;
-                            unsigned pos2 = 0;
-                            
-                            for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-                                if (i == 1)
-                                    pos2 = cast<ConstantInt>(*it)->getZExtValue();
-                                
-                                i++;
+                                std::vector<int> mems2 = memoryBlock2[parent];
+                                int a = Value2Int(I);
+                                pointerAnalysis->addAddr(a, mems2[pos2]);
+                                memoryBlock[v] = mems2;
                             }
-
-                            std::vector<int> mems2 = memoryBlock2[parent];
-                            int a = Value2Int(I);
-                            pointerAnalysis->addAddr(a, mems2[pos2]);
-                            memoryBlock[v] = mems2;
                         }
                     } else {
                         int a = Value2Int(I);
