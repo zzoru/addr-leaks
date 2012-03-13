@@ -90,6 +90,7 @@ namespace {
         std::map<INode, VNodeSet> graphiV;
 
         std::map<Value*, std::vector<int> > memoryBlock;
+        std::map<int, std::vector<int> > memoryBlock2;
         std::map<Value*, Function*> function;
 
         PointerAnalysis *pointerAnalysis;
@@ -114,6 +115,8 @@ namespace {
         int getNewMemoryBlock();
         int getNewInt();
         void printInt2ValueTable();
+        void handleAlloca(Instruction *I); 
+        void handleNestedStructs(const Type *StTy, int parent);
     };
 }
 
@@ -754,6 +757,69 @@ void AddrLeaks::setFunction(Function &F, Value *v) {
         function[v] = &F;
 }
 
+void AddrLeaks::handleAlloca(Instruction *I) {
+    AllocaInst *AI = dyn_cast<AllocaInst>(I);
+    const Type *Ty = AI->getAllocatedType();
+    
+    std::vector<int> mems;
+    unsigned numElems = 1;
+    bool isStruct = false;
+
+    if (Ty->isStructTy()) { // Handle structs
+        const StructType *StTy = dyn_cast<StructType>(Ty);
+        numElems = StTy->getNumElements();
+        isStruct = true;
+    }
+
+    if (!memoryBlock.count(I)) {
+        for (unsigned i = 0; i < numElems; i++) {
+            mems.push_back(getNewMemoryBlock());
+
+            if (isStruct) {
+                const StructType *StTy = dyn_cast<StructType>(Ty);
+                
+                if (StTy->getElementType(i)->isPointerTy())
+                    sources2.insert(std::make_pair(mems[i], VALUE));
+                else if (StTy->getElementType(i)->isStructTy())
+                    handleNestedStructs(StTy->getElementType(i), mems[i]);
+            }
+        }
+
+        memoryBlock[I] = mems;
+    } else {
+        mems = memoryBlock[I];
+    }
+
+    for (unsigned i = 0; i < mems.size(); i++) {
+        int a = Value2Int(I);
+        errs() << "ADDR: " << a << "\t" << mems[i] << "\n";
+        pointerAnalysis->addAddr(a, mems[i]);
+        sources2.insert(std::make_pair(mems[i], ADDR));
+    }
+}
+
+void AddrLeaks::handleNestedStructs(const Type *Ty, int parent) {
+    const StructType *StTy = dyn_cast<StructType>(Ty);
+    unsigned numElems = StTy->getNumElements();
+    std::vector<int> mems;
+
+    for (unsigned i = 0; i < numElems; i++) {
+        mems.push_back(getNewMemoryBlock());
+
+        if (StTy->getElementType(i)->isPointerTy())
+            sources2.insert(std::make_pair(mems[i], VALUE));
+        else if (StTy->getElementType(i)->isStructTy())
+            handleNestedStructs(StTy->getElementType(i), mems[i]);
+    }
+
+    memoryBlock2[parent] = mems;
+
+    for (unsigned i = 0; i < mems.size(); i++) {
+        pointerAnalysis->addAddr(parent, mems[i]);
+        sources2.insert(std::make_pair(mems[i], ADDR));
+    }
+}
+
 void AddrLeaks::addConstraints(Function &F) {
     for (Function::iterator BB = F.begin(), E = F.end(); BB != E; ++BB) {
         for (BasicBlock::iterator I = BB->begin(), E = BB->end(); I != E; ++I) {
@@ -785,42 +851,7 @@ void AddrLeaks::addConstraints(Function &F) {
             switch (I->getOpcode()) {
                 case Instruction::Alloca:
                 {
-                    AllocaInst *AI = dyn_cast<AllocaInst>(I);
-                    const Type *Ty = AI->getAllocatedType();
-                    
-                    std::vector<int> mems;
-                    unsigned numElems = 1;
-                    bool isStruct = false;
-
-                    if (Ty->isStructTy()) { // Handle structs
-                        const StructType *StTy = dyn_cast<StructType>(Ty);
-                        numElems = StTy->getNumElements();
-                        isStruct = true;
-                    }
-
-                    if (!memoryBlock.count(I)) {
-                        for (unsigned i = 0; i < numElems; i++) {
-                            mems.push_back(getNewMemoryBlock());
-
-                            if (isStruct) {
-                                const StructType *StTy = dyn_cast<StructType>(Ty);
-                                
-                                if (StTy->getElementType(i)->isPointerTy())
-                                    sources2.insert(std::make_pair(mems[i], VALUE));
-                            }
-                        }
-
-                        memoryBlock[I] = mems;
-                    } else {
-                        mems = memoryBlock[I];
-                    }
-
-                    for (unsigned i = 0; i < mems.size(); i++) {
-                        int a = Value2Int(I);
-                        errs() << "ADDR: " << a << "\t" << mems[i] << "\n";
-                        pointerAnalysis->addAddr(a, mems[i]);
-                        sources2.insert(std::make_pair(mems[i], ADDR));
-                    }
+                    handleAlloca(I);
                     
                     break;
                 }
@@ -831,22 +862,55 @@ void AddrLeaks::addConstraints(Function &F) {
                     const PointerType *PoTy = GEPI->getPointerOperandType();
                     const Type *Ty = PoTy->getElementType();
 
-                    if (Ty->isStructTy() && memoryBlock.count(v)) {
-                        int i = 0;
-                        unsigned pos = 0;
+                    if (Ty->isStructTy()) {
+                        if (memoryBlock.count(v)) {
+                            int i = 0;
+                            unsigned pos = 0;
 
-                        for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-                            if (i == 1)
-                                pos = cast<ConstantInt>(*it)->getZExtValue();
+                            for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
+                                if (i == 1)
+                                    pos = cast<ConstantInt>(*it)->getZExtValue();
+                                
+                                i++;
+                            }
                             
-                            i++;
+                            std::vector<int> mems = memoryBlock[v];
+                            int a = Value2Int(I);
+                            errs() << "BASE: " << a << "\t" << mems[pos] << "\n";
+                            //pointerAnalysis->addBase(a, mems[pos]);
+                            pointerAnalysis->addAddr(a, mems[pos]);
+                        } else {
+                            GetElementPtrInst *GEPI2 = dyn_cast<GetElementPtrInst>(v);
+                            Value *v2 = GEPI2->getPointerOperand();
+
+                            int i = 0;
+                            unsigned pos = 0;
+
+                            for (User::op_iterator it = GEPI2->idx_begin(), e = GEPI2->idx_end(); it != e; ++it) {
+                                if (i == 1)
+                                    pos = cast<ConstantInt>(*it)->getZExtValue();
+                                
+                                i++;
+                            }
+
+                            std::vector<int> mems = memoryBlock[v2];
+                            int parent = mems[pos];
+                           
+                            i = 0;
+                            unsigned pos2 = 0;
+                            
+                            for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
+                                if (i == 1)
+                                    pos2 = cast<ConstantInt>(*it)->getZExtValue();
+                                
+                                i++;
+                            }
+
+                            std::vector<int> mems2 = memoryBlock2[parent];
+                            int a = Value2Int(I);
+                            pointerAnalysis->addAddr(a, mems2[pos2]);
+                            memoryBlock[v] = mems2;
                         }
-                        
-                        std::vector<int> mems = memoryBlock[v];
-                        int a = Value2Int(I);
-                        errs() << "BASE: " << a << "\t" << mems[pos] << "\n";
-                        //pointerAnalysis->addBase(a, mems[pos]);
-                        pointerAnalysis->addAddr(a, mems[pos]);
                     } else {
                         int a = Value2Int(I);
                         int b = Value2Int(v);
@@ -916,13 +980,13 @@ void AddrLeaks::buildMemoryGraph() {
             int dst = *it2;
 
             if (int2value.count(src) && int2value.count(dst))
-                memoryGraphVV[std::make_pair(int2value[src], VALUE)].insert(std::make_pair(int2value[dst], ADDR));
+                memoryGraphVV[std::make_pair(int2value[src], VALUE)].insert(std::make_pair(int2value[dst], VALUE));
             else if (!int2value.count(src) && int2value.count(dst))
-                memoryGraphiV[std::make_pair(src, VALUE)].insert(std::make_pair(int2value[dst], ADDR));
+                memoryGraphiV[std::make_pair(src, VALUE)].insert(std::make_pair(int2value[dst], VALUE));
             else if (int2value.count(src) && !int2value.count(dst))
-                memoryGraphVi[std::make_pair(int2value[src], VALUE)].insert(std::make_pair(dst, ADDR));
+                memoryGraphVi[std::make_pair(int2value[src], VALUE)].insert(std::make_pair(dst, VALUE));
             else if (!int2value.count(src) && !int2value.count(dst))
-                memoryGraphii[std::make_pair(src, VALUE)].insert(std::make_pair(dst, ADDR));
+                memoryGraphii[std::make_pair(src, VALUE)].insert(std::make_pair(dst, VALUE));
         }
     }
 }
@@ -975,22 +1039,24 @@ void AddrLeaks::buildMyGraph(Function &F) {
                     const PointerType *PoTy = GEPI->getPointerOperandType();
                     const Type *Ty = PoTy->getElementType();
 
-                    if (Ty->isStructTy() && memoryBlock.count(v)) {
-                        int i = 0;
-                        unsigned pos = 0;
+                    if (Ty->isStructTy()){
+                        if (memoryBlock.count(v)) {
+                            int i = 0;
+                            unsigned pos = 0;
 
-                        for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-                            if (i == 1)
-                                pos = cast<ConstantInt>(*it)->getZExtValue();
-                            
-                            i++;
+                            for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
+                                if (i == 1)
+                                    pos = cast<ConstantInt>(*it)->getZExtValue();
+                                
+                                i++;
+                            }
+
+                            std::vector<int> mems = memoryBlock[v];
+
+                            graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems[pos], ADDR));
+                            vertices1.insert(std::make_pair(I, VALUE));
+                            vertices2.insert(std::make_pair(mems[pos], ADDR));
                         }
-
-                        std::vector<int> mems = memoryBlock[v];
-
-                        graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems[pos], ADDR));
-                        vertices1.insert(std::make_pair(I, VALUE));
-                        vertices2.insert(std::make_pair(mems[pos], ADDR));
                     } else {
                         graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(v, ADDR));
                         vertices1.insert(std::make_pair(I, VALUE));
