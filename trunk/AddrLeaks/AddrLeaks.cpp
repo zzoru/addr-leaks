@@ -870,7 +870,8 @@ void AddrLeaks::addConstraints(Function &F) {
                 if (CI) {
                     Function *FF = CI->getCalledFunction();
 
-                    if (FF && FF->getName() == "malloc") {
+                    if (FF && (FF->getName() == "malloc" || FF->getName() == "realloc" || 
+                               FF->getName() == "calloc")) {
                         std::vector<int> mems;
 
                         if (!memoryBlock.count(I)) {
@@ -1236,7 +1237,8 @@ void AddrLeaks::buildMyGraph(Function &F) {
                 if (CI) {
                     Function *FF = CI->getCalledFunction();
 
-                    if (FF && FF->getName() == "malloc") {
+                    if (FF && (FF->getName() == "malloc" || FF->getName() == "realloc" ||
+                               FF->getName() == "calloc")) {
                         std::vector<int> mems;
                         
                         mems = memoryBlock[I];
