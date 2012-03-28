@@ -89,6 +89,8 @@ namespace {
         std::map<VNode, INodeSet> graphVi;
         std::map<INode, VNodeSet> graphiV;
 
+        std::set<Value*> leakedValues;
+        
         std::map<Value*, std::vector<Value*> > phiValues;
         std::map<Value*, std::vector<int> > memoryBlock;
         std::map<int, std::vector<int> > memoryBlock2;
@@ -119,6 +121,7 @@ namespace {
         void printInt2ValueTable();
         void handleAlloca(Instruction *I); 
         void handleNestedStructs(const Type *StTy, int parent);
+        std::set<Value*> getLeakedValues();
     };
 }
 
@@ -165,8 +168,10 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
 
     visited.insert(std::make_pair(v, t));
 
-    if (sources.find(std::make_pair(v, t)) != sources.end())
+    if (sources.find(std::make_pair(v, t)) != sources.end()) {
+        leakedValues.insert(v);
         return true;
+    }
     
     for (VNodeSet::const_iterator it = graphVV[std::make_pair(v, t)].begin(); 
             it != graphVV[std::make_pair(v, t)].end(); ++it) {
@@ -174,6 +179,7 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
         nodeType tt = (*it).second;
 
         if (dfs(vv, tt)) {
+            leakedValues.insert(v);
             sources.insert(std::make_pair(v, t));
             return true;
         }
@@ -185,6 +191,7 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
         nodeType tt = (*it).second;
 
         if (dfs(vv, tt)) {
+            leakedValues.insert(v);
             sources.insert(std::make_pair(v, t));
             return true;
         }
@@ -746,7 +753,20 @@ bool AddrLeaks::runOnModule(Module &M) {
         }
     }
 
+    /* Static analysis completed.
+     * Call the method getLeakedValues() to get the instructions to instrument */
+
+    std::set<Value*> lv = getLeakedValues();
+
+    for (std::set<Value*>::iterator it = lv.begin(); it != lv.end(); it++) {
+        errs() << "Leaked Value: " << **it << "\n";
+    }
+
     return false;
+}
+
+std::set<Value*> AddrLeaks::getLeakedValues() {
+    return leakedValues;
 }
 
 void AddrLeaks::setFunction(Function &F, Value *v) {
