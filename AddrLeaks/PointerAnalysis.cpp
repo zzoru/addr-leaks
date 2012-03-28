@@ -2,7 +2,7 @@
 
 #include "PointerAnalysis.h"
 
-const bool debug = true;
+const bool debug = false;
 int teste = 1;
 
 // ============================================= //
