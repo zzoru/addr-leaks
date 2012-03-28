@@ -1507,13 +1507,36 @@ void AddrLeaks::buildMyGraph(Function &F) {
                 }
                 case Instruction::Br: // Don't represent branches in the graph
                     break;
+                case Instruction::PHI:
+                { 
+                    PHINode *Phi = dyn_cast<PHINode>(I);
+                    unsigned n = Phi->getNumIncomingValues();
+    
+                    for (unsigned i = 0; i < n; i++) {
+                        Value *v = Phi->getIncomingValue(i);
+
+                        graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(v, VALUE));
+                        vertices1.insert(std::make_pair(I, VALUE));
+                        vertices1.insert(std::make_pair(v, VALUE));
+
+                        setFunction(F, v);
+                    }
+
+                    setFunction(F, I);
+                    break;
+                }
                 default:
                 {
                     if (isa<CallInst>(I)) {
                         CallInst *CI = dyn_cast<CallInst>(I);
-                        graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(CI->getCalledValue(), VALUE));
-                        vertices1.insert(std::make_pair(I, VALUE));
-                        vertices1.insert(std::make_pair(CI->getCalledValue(), VALUE));
+
+                        Function *FF = CI->getCalledFunction();
+
+                        if (FF && !FF->getReturnType()->isVoidTy()) {
+                            graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(CI->getCalledValue(), VALUE));
+                            vertices1.insert(std::make_pair(I, VALUE));
+                            vertices1.insert(std::make_pair(CI->getCalledValue(), VALUE));
+                        }
                     }
 
                     // Handle simple operations
