@@ -3,7 +3,7 @@
  * This analysis is:
  *  - inter-procedural
  *  - context-sensitive
- *  - field-sensitive (up to one level)
+ *  - field-sensitive
  *
  * Universidade Federal de Minas Gerais - UFMG
  * Laboratório de Linguagens de Programação - LLP
@@ -611,7 +611,7 @@ bool AddrLeaks::runOnModule(Module &M) {
 
     errs() << deltaTimeStr << " Time to perform the pointer analysis\n";
 
-    pointerAnalysis->print();
+    //pointerAnalysis->print();
 
     //printInt2ValueTable();
 
@@ -647,7 +647,7 @@ bool AddrLeaks::runOnModule(Module &M) {
                 
                 CallSite::arg_iterator AI = CS.arg_begin();
             
-                std::vector<bool> vaza;
+                std::vector<bool> vaza, isString(false);
                 Value *fmt = *AI;
                 std::string formatString;
                 bool hasFormat = false;
@@ -673,7 +673,6 @@ bool AddrLeaks::runOnModule(Module &M) {
                                 formatString[i + 1] == 'f' ||
                                 formatString[i + 1] == 'g' ||
                                 formatString[i + 1] == 'G' ||
-                                formatString[i + 1] == 's' ||
                                 formatString[i + 1] == 'n' ||
                                 formatString[i + 1] == 'L' ||
                                 formatString[i + 1] == '%') {
@@ -690,6 +689,10 @@ bool AddrLeaks::runOnModule(Module &M) {
                                        formatString[i + 1] == 'l') {
                                 vaza.push_back(true);
                                 i++;
+                            } else if (formatString[i + 1] == 's') { // Special case
+                                vaza.push_back(true);
+                                isString[vaza.size() - 1] = true;
+                                i++;
                             }
                         }
                     }
@@ -704,16 +707,41 @@ bool AddrLeaks::runOnModule(Module &M) {
                         Value *v = *AI;
                        
                         if (i < vazaSize && vaza[i]) {
-                            // Just to collect some statistics. Will disappear in future
-                            buggyPathsSize += countBuggyPathSize(v, VALUE);
-
-                            // Real search
-                            visited.clear();
-                            visited2.clear();
+                            if (isString[i]) { // Handle special string case.
+                                IntSet pointsTo = pointerAnalysis->pointsTo(Value2Int(v));
                             
-                            if (dfs(v, VALUE)) {
-                                leaked.push_back(v);
-                                leaksFound++;
+                                for (IntSet::const_iterator it = pointsTo.begin(), 
+                                    e = pointsTo.end(); it != e; it++) {
+                                    
+                                    visited.clear();
+                                    visited2.clear();
+
+                                    if (int2value.count(*it)) {
+                                        Value *vv = int2value[*it];
+
+                                        if (dfs(vv, VALUE)) {
+                                            leaked.push_back(vv);
+                                            leaksFound++;
+                                        }
+                                    } else {
+                                        if (dfs(*it, VALUE)) {
+                                            leaked.push_back(v); // FIX
+                                            leaksFound++;
+                                        }
+                                    }
+                                }
+                            } else {
+                                // Just to collect some statistics. Will disappear in future
+                                // buggyPathsSize += countBuggyPathSize(v, VALUE);
+
+                                // Real search
+                                visited.clear();
+                                visited2.clear();
+                                
+                                if (dfs(v, VALUE)) {
+                                    leaked.push_back(v);
+                                    leaksFound++;
+                                }
                             }
                         }
                     }
@@ -1536,8 +1564,25 @@ void AddrLeaks::buildMyGraph(Function &F) {
 
                         if (FF && !FF->getReturnType()->isVoidTy()) {
                             graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(CI->getCalledValue(), VALUE));
+                            
                             vertices1.insert(std::make_pair(I, VALUE));
                             vertices1.insert(std::make_pair(CI->getCalledValue(), VALUE));
+                        }
+
+                        if (FF && FF->getName() == "itoa") {
+                            Value *dst = CI->getOperand(1);
+
+                            IntSet pointsTo = pointerAnalysis->pointsTo(Value2Int(dst));
+                            
+                            for (IntSet::const_iterator it = pointsTo.begin(), 
+                                e = pointsTo.end(); it != e; it++) {
+                                
+                                if (int2value.count(*it)) {
+                                    sources.insert(std::make_pair(int2value[*it], VALUE));
+                                } else {
+                                    sources2.insert(std::make_pair(*it, VALUE));
+                                }
+                            }
                         }
                     }
 
