@@ -6,7 +6,7 @@ import subprocess
 from termcolor import colored
 
 
-files = ['direct1.bc', 'direct2.bc', 'direct3.bc', 'direct4.bc',
+files = ['direct1.bc', 'direct2.bc', 'direct3.bc', 'direct4.bc', 'direct5.bc',
          'indirect1.bc', 'indirect2.bc', 'indirect3.bc', 'indirect4.bc',
          'array1.bc', 'array2.bc', 'array3.bc', 'array4.bc',
          'struct1.bc', 'struct2.bc', 'struct3.bc',
@@ -40,6 +40,9 @@ for filename in files:
         if result.find('File: direct3.c, Line: 10') == -1: passed = False
     elif filename == 'direct4.bc':
         if result.find('File: direct4.c, Line: 11') == -1: passed = False
+    elif filename == 'direct5.bc':
+        if result.find('File: direct5.c, Line: 15') == -1: passed = False
+        if result.find('File: direct5.c, Line: 16') == -1: passed = False
     elif filename == 'indirect1.bc':
         if result.find('File: indirect1.c, Line: 10') == -1: passed = False
         if result.find('File: indirect1.c, Line: 14') == -1: passed = False

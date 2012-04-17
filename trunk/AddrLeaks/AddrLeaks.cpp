@@ -1612,9 +1612,18 @@ void AddrLeaks::buildMyGraph(Function &F) {
                                 {
                                     BitCastInst *CI = dyn_cast<BitCastInst>(CE);
 
-                                    if (CI && CI->getDestTy()->isPointerTy())
-                                        sources.insert(std::make_pair(CE, VALUE));
-                                    
+                                    if (CI) {
+                                        if (CI->getDestTy()->isPointerTy()) {
+                                            sources.insert(std::make_pair(CE, VALUE));
+                                        }
+                                    } else {
+                                        Value *op = CE->getOperand(0);
+                                        const Type *Ty = op->getType();
+
+                                        if (Ty->isPointerTy())
+                                            sources.insert(std::make_pair(CE, VALUE));
+                                    }
+
                                     break;
                                 }
                             } 
