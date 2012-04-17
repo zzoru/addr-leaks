@@ -626,6 +626,11 @@ void FullPass::AddShadowMemory(Value& original, Value& shadow)
 	shadowMemoryMap.insert(std::pair<Value*, Value*>(&original, &shadow));
 }
 
+Value* FullPass::CreateArgumentShadowMemory(Argument& argument)
+{
+	
+}
+
 void FullPass::SetupParamPassingShadows()
 {
 	for (Module::iterator it = module->begin(), itEnd = module->end(); it != itEnd; ++it)
