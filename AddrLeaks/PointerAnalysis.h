@@ -1,3 +1,5 @@
+//   Leonardo Vilela Teixeira
+
 #ifndef POINTER_ANALYSIS_H
 #define POINTER_ANALYSIS_H
 
