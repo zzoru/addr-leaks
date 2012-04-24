@@ -1,4 +1,5 @@
 #include <iostream>
+#include <sstream>
 
 #include "PointerAnalysis.h"
 
@@ -337,7 +338,7 @@ void PointerAnalysis::solve()
     IntSet NewWorkSet;
         
     if (debug) std::cerr << "Starting the analysis" << std::endl;
-
+    
     while (!WorkSet.empty()) {
         int Node = *WorkSet.begin();
         WorkSet.erase(WorkSet.begin());
@@ -391,9 +392,9 @@ void PointerAnalysis::solve()
             IntSet::iterator NextZ = Z;
             NextZ++;
             int ZVal = *Z;
-            std::string edge = "" + Node;
-            edge += "->";
-            edge += ZVal;
+            std::stringstream sstm(std::stringstream::in);
+            sstm << Node << "->" << ZVal;
+            std::string edge = sstm.str();
 
             if (debug) std::cerr << " - Comparing pts" << std::endl;
 
