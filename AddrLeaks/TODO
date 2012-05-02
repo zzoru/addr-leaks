@@ -1,5 +1,4 @@
 TODO List
 
-* Check if the return of extern functions are marked as tainted
 * Improve support for functions that convert numbers (addresses) into strings.
-
+* Add support to functions like memcpy
