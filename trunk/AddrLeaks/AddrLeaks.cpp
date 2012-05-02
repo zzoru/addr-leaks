@@ -953,7 +953,8 @@ void AddrLeaks::addConstraints(Function &F) {
                                         }
                                         std::vector<int> mems = memoryBlocks[vv][j];
                                         int a = Value2Int(I);
-                                        pointerAnalysis->addAddr(a, mems[pos]);
+                                        if (pos < mems.size()) 
+                                            pointerAnalysis->addAddr(a, mems[pos]);
                                     }
                                 } else {
                                     if (memoryBlock.count(vv)) {
@@ -975,10 +976,13 @@ void AddrLeaks::addConstraints(Function &F) {
 
                                                 std::vector<int> mems = memoryBlock[v2];
                                                 int parent = mems[0];
-                                                std::vector<int> mems2 = memoryBlock2[parent];
+                                                if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
+                                                    std::vector<int> mems2 = memoryBlock2[parent];
 
-                                                int a = Value2Int(I);
-                                                pointerAnalysis->addAddr(a, mems2[pos]);
+                                                    int a = Value2Int(I);
+                                                    if (pos < mems2.size()) 
+                                                        pointerAnalysis->addAddr(a, mems2[pos]);
+                                                }
                                             }
                                         } else {
                                             int i = 0;
@@ -994,7 +998,8 @@ void AddrLeaks::addConstraints(Function &F) {
                                             std::vector<int> mems = memoryBlock[vv];
                                             int a = Value2Int(I);
                                             //pointerAnalysis->addBase(a, mems[pos]);
-                                            pointerAnalysis->addAddr(a, mems[pos]);
+                                            if (pos < mems.size()) 
+                                                pointerAnalysis->addAddr(a, mems[pos]);
                                         }
                                     } else {
                                         GetElementPtrInst *GEPI2 = dyn_cast<GetElementPtrInst>(vv);
@@ -1032,8 +1037,11 @@ void AddrLeaks::addConstraints(Function &F) {
                                                 if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
                                                     std::vector<int> mems2 = memoryBlock2[parent];
                                                     int a = Value2Int(I);
-                                                    pointerAnalysis->addAddr(a, mems2[pos2]);
-                                                    memoryBlock[v] = mems2;
+
+                                                    if (pos2 < mems2.size()) {
+                                                        pointerAnalysis->addAddr(a, mems2[pos2]);
+                                                        memoryBlock[v] = mems2;
+                                                    }
                                                 }
 
                                             }
@@ -1061,10 +1069,13 @@ void AddrLeaks::addConstraints(Function &F) {
 
                                         std::vector<int> mems = memoryBlock[v2];
                                         int parent = mems[0];
-                                        std::vector<int> mems2 = memoryBlock2[parent];
+                                        if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
+                                            std::vector<int> mems2 = memoryBlock2[parent];
 
-                                        int a = Value2Int(I);
-                                        pointerAnalysis->addAddr(a, mems2[pos]);
+                                            int a = Value2Int(I);
+                                            if (pos < mems2.size()) 
+                                                pointerAnalysis->addAddr(a, mems2[pos]);
+                                        }
                                     }
                                 } else {
                                     int i = 0;
@@ -1080,7 +1091,8 @@ void AddrLeaks::addConstraints(Function &F) {
                                     std::vector<int> mems = memoryBlock[v];
                                     int a = Value2Int(I);
                                     //pointerAnalysis->addBase(a, mems[pos]);
-                                    pointerAnalysis->addAddr(a, mems[pos]);
+                                    if (pos < mems.size()) 
+                                        pointerAnalysis->addAddr(a, mems[pos]);
                                 }
                             } else {
                                 GetElementPtrInst *GEPI2 = dyn_cast<GetElementPtrInst>(v);
@@ -1118,8 +1130,11 @@ void AddrLeaks::addConstraints(Function &F) {
                                         if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
                                             std::vector<int> mems2 = memoryBlock2[parent];
                                             int a = Value2Int(I);
-                                            pointerAnalysis->addAddr(a, mems2[pos2]);
-                                            memoryBlock[v] = mems2;
+                                            
+                                            if (pos2 < mems2.size()) {
+                                                pointerAnalysis->addAddr(a, mems2[pos2]);
+                                                memoryBlock[v] = mems2;
+                                            }
                                         }
                                     }
                                 }
@@ -1341,9 +1356,11 @@ void AddrLeaks::buildMyGraph(Function &F) {
                                     if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
                                         std::vector<int> mems2 = memoryBlock2[parent];
 
-                                        graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems2[pos], ADDR));
-                                        vertices1.insert(std::make_pair(I, VALUE));
-                                        vertices2.insert(std::make_pair(mems2[pos], ADDR));
+                                        if (pos < mems2.size()) {
+                                            graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems2[pos], ADDR));
+                                            vertices1.insert(std::make_pair(I, VALUE));
+                                            vertices2.insert(std::make_pair(mems2[pos], ADDR));
+                                        }
                                     }
                                 }
                             } else {
@@ -1359,9 +1376,11 @@ void AddrLeaks::buildMyGraph(Function &F) {
                                 
                                 std::vector<int> mems = memoryBlock[v];
                                 
-                                graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems[pos], ADDR));
-                                vertices1.insert(std::make_pair(I, VALUE));
-                                vertices2.insert(std::make_pair(mems[pos], ADDR));
+                                if (pos < mems.size()) {
+                                    graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems[pos], ADDR));
+                                    vertices1.insert(std::make_pair(I, VALUE));
+                                    vertices2.insert(std::make_pair(mems[pos], ADDR));
+                                }
                             }
                         } else {
                             GetElementPtrInst *GEPI2 = dyn_cast<GetElementPtrInst>(v);
@@ -1398,10 +1417,12 @@ void AddrLeaks::buildMyGraph(Function &F) {
                                     
                                     if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
                                         std::vector<int> mems2 = memoryBlock2[parent];
-                                    
-                                        graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems2[pos2], ADDR));
-                                        vertices1.insert(std::make_pair(I, VALUE));
-                                        vertices2.insert(std::make_pair(mems2[pos2], ADDR));
+                                   
+                                        if (pos2 < mems2.size()) {
+                                            graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems2[pos2], ADDR));
+                                            vertices1.insert(std::make_pair(I, VALUE));
+                                            vertices2.insert(std::make_pair(mems2[pos2], ADDR));
+                                        }
                                     }
                                 }
                             }
@@ -1434,7 +1455,6 @@ void AddrLeaks::buildMyGraph(Function &F) {
                     
                     setFunction(F, I);
                     setFunction(F, v);
-
 
                     saida2:
                     break;
