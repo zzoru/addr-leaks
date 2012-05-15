@@ -36,7 +36,10 @@ public:
 	virtual bool runOnModule(Module&);
 	
 private:
-	void HandleStores(Value& v);
+	GlobalVariable& GetParamGlobal(Argument& arg);
+	Type* ConvertType(Type*);
+	Function& GetAssertStringFunction();
+	void HandlePrintf(CallSite*);
 	void HandleUses(Value& v);
 	void HandleSpecialFunctions();
 	void HandleMemcpy(MemCpyInst&);
@@ -54,7 +57,7 @@ private:
 	bool HasBody(Function&);
 	void HandleReturns(Function&);
 //	void HandleParam(Argument&);
-	GlobalVariable& GetReturnGlobal(Function&);
+	GlobalVariable& GetReturnGlobal(Type&);
 //	GlobalVariable& GetReturnShadowMemory(Type&);
 	GlobalVariable& GetParamShadow(Argument&);
 	void AddShadow(Value&, Value&);
@@ -68,7 +71,7 @@ private:
 	Function& GetMemsetFunction(int);
 	void InstrumentDelayedPHINodes();
 //	void CreateAndInsertFillMemoryCode(Value& ptr, Value& numBytes, Value& value, Instruction& insertBefore);
-	void HandleParamPassingTo(Function&, int, GlobalVariable*);
+	void HandleParamPassingTo(Function&, int, Value*);
 	Value* HandleExternFunctionCall(CallSite&);
 //	Value* HandlePrintfCall(CallSite&);
 //	Value* HandleMallocCall(CallSite&);
@@ -90,8 +93,9 @@ private:
 	std::set<Value*> instrumented;
 	std::set<Value*> leakedValues;
 	
-	static const int target = 64;
-	static const int ptrSize = 64;
+//	static const int target = 64;
+//	static const int ptrSize = 64;
+	bool dumb;
 };
 
 char Optimized::ID = 0;

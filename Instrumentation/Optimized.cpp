@@ -1,6 +1,8 @@
 #include "Optimized.h"
 
+#include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
+
 #define DEBUG 
 #ifndef DEBUG
 #define db(x) ;;;
@@ -8,6 +10,7 @@
 #define db(x) errs() << x << "\n";
 #endif
 
+cl::opt<bool> IsDumb("d", cl::desc("Specify whether to use the static analysis"), cl::desc("is dumb"));
 
 //@todo Remember to test phi with one path being clean and other being dirty
 
@@ -21,32 +24,89 @@ Optimized::Optimized() : ModulePass(ID)
 
 bool Optimized::runOnModule(Module& module)
 {
+	db("*********************************\nIn my pass*********************************")
+																													dumb = IsDumb;
 	Setup(module);
 	HandleSpecialFunctions();
-	
-	leakedValues = analysis->getLeakedValues();
 
-	
-	for (std::set<Value*>::iterator it = leakedValues.begin(); it != leakedValues.end(); it++) {
-		
-		//TODO: remember to fix this in the future
-		if (dyn_cast<Function>(*it))
+	if (dumb)
+	{
+		for (Module::iterator funcIt = module.begin(), funcItEnd = module.end(); funcIt != funcItEnd; funcIt++)
 		{
-			
-			continue;
+			for (inst_iterator it = inst_begin(*funcIt), itEnd = inst_end(*funcIt); it != itEnd; it++)
+			{
+				if (! AlreadyInstrumented(*it))
+				{
+
+					HandleUses(*it);
+				}
+
+			}
 		}
-		
-		HandleUses(**it);
 	}
-	
-	
-	
+	else
+	{
+		leakedValues = analysis->getLeakedValues();
+
+
+		for (std::set<Value*>::iterator it = leakedValues.begin(); it != leakedValues.end(); it++) {
+
+			//TODO: remember to fix this in the future
+			if (dyn_cast<Function>(*it))
+			{
+
+				continue;
+			}
+
+			HandleUses(**it);
+		}
+	}
+
+	InstrumentDelayedPHINodes();
+	db("Cheguei aqui*********************");
+
 	return true;
 }
 
 /*********************************************************************************************************************************************************************************
  * PRIVATE METHODS IMPLEMENTATION
  *********************************************************************************************************************************************************************************/
+
+GlobalVariable& Optimized::GetParamGlobal(Argument& param)
+{
+	static std::map<unsigned, GlobalVariable*> gvs;
+
+	unsigned argNo = param.getArgNo();
+
+	std::map<unsigned, GlobalVariable*>::iterator it = gvs.find(argNo);
+
+	if (it != gvs.end()) 
+	{
+		GlobalVariable* gv = it->second;
+		Type* oldType = gv->getType()->getElementType();
+		int oldSize = targetData->getTypeSizeInBits(oldType);
+		Type* newType = param.getType();
+		int newSize = targetData->getTypeSizeInBits(newType);
+		if (newSize > oldSize)
+		{
+			gv->mutateType(Type::getIntNPtrTy(*context, newSize)); //TODO: this is dangerous/not sure if the right choice
+			gv->setInitializer(&GetNullValue(*Type::getIntNTy(*context, newSize)));
+		}
+
+		return *gv;
+	}
+
+	GlobalVariable* gv= new GlobalVariable(*module, ConvertType(param.getType()), false, GlobalVariable::CommonLinkage, &GetNullValue(*ConvertType(param.getType())), "");
+	db("Created global variable: " << *gv);
+	gvs.insert(std::pair<unsigned, GlobalVariable*>(argNo, gv));
+	return *gv;
+
+}
+
+Type* Optimized::ConvertType(Type* type)
+{
+	return Type::getIntNTy(*context, targetData->getTypeSizeInBits(type));
+}
 
 //void Optimized::HandleStores(Value& v)
 //{
@@ -67,46 +127,234 @@ bool Optimized::runOnModule(Module& module)
 //	}
 //}
 
-void Optimized::HandleUses(Value& v)
+Function& Optimized::GetAssertStringFunction()
 {
-	Value& shadow = GetShadow(v);
-	
-	for (Value::use_iterator it = v.use_begin(), end = v.use_end(); it != end; it++)
-	{
-		//TODO: this may be an invoke or something like that
-		CallInst* call = dyn_cast<CallInst>(*it);
-		if (call) 
+	static Function* func = 0;
+
+	if (func) return *func;
+
+	std::vector<Type*> argTypes;
+	argTypes.push_back(Type::getInt8PtrTy(*context));
+	func = Function::Create(FunctionType::get(Type::getVoidTy(*context), argTypes, false), GlobalValue::ExternalLinkage, "assertString", module);
+	return *func;
+}
+
+void Optimized::HandlePrintf(CallSite* cs)
+{
+	db("Handling printf")
+																	CallSite::arg_iterator AI = cs->arg_begin();
+
+	std::vector<bool> vaza, isString;
+	Value *fmt = *AI;
+	std::string formatString;
+	bool hasFormat = false;
+
+	if (ConstantExpr *CE = dyn_cast<ConstantExpr>(fmt)) {
+		if (GlobalVariable *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
+			if (ConstantArray *CA = dyn_cast<ConstantArray>(GV->getInitializer())) {
+				if (CA->isString()) {
+					formatString = CA->getAsString();
+					hasFormat = true;
+				}
+			}
+		}
+	}
+
+	int narg = 0;
+
+	//TODO: This is not entirely correct. It ignores, for example, specifiers like %.3f etc
+
+	if (!formatString.empty()) {
+
+
+		int size = formatString.size();
+		int i = 0;
+
+
+		while (true)
 		{
-			Function& f = *call->getCalledFunction();
-			StringRef name = f.getName();
-			
-			if (name.equals("printf"))
+			while (i < size && formatString[i] != '%') i++;
+
+			if (i == size) break;
+			i++;
+
+			if (i < size && isdigit(formatString[i]))
 			{
-				ICmpInst* cmp = new ICmpInst(call, CmpInst::ICMP_NE, &shadow, Constant::getNullValue(shadow.getType()), "");
+				while (isdigit(formatString[i])) i++;
+			}
+
+			if (i < size && formatString[i] == '*')
+			{
+				vaza.push_back(false);
+				isString.push_back(false);
+				i++;
+			}
+
+			if (i < size && formatString[i] == '.')
+			{
+				i++;
+				while (i < size && isdigit(formatString[i])) i++;
+			}
+
+			if (i < size)
+			{
+				switch (formatString[i])
+				{
+				case 'c':
+				case 'e':
+				case 'E':
+				case 'f':
+				case 'g':
+				case 'G':
+				case 'n':
+				case 'L':
+				case '%':
+					vaza.push_back(false);
+					isString.push_back(false);
+					break;
+				case 'd':
+				case 'i':
+				case 'o':
+				case 'u':
+				case 'x':
+				case 'X':
+				case 'p':
+				case 'h':
+				case 'l':
+					vaza.push_back(true);
+					isString.push_back(false);
+					break;
+				case 's':
+					vaza.push_back(true);
+					isString.push_back(true);
+					break;
+				}
+			}
+
+			i++;
+		}
+	}
+
+	//			if (formatString[i] == '%') {
+	//				if (formatString[i + 1] == 'c' ||
+	//						formatString[i + 1] == 'e' ||
+	//						formatString[i + 1] == 'E' ||
+	//						formatString[i + 1] == 'f' ||
+	//						formatString[i + 1] == 'g' ||
+	//						formatString[i + 1] == 'G' ||
+	//						formatString[i + 1] == 'n' ||
+	//						formatString[i + 1] == 'L' ||
+	//						formatString[i + 1] == '%') {
+	//					vaza.push_back(false);
+	//					isString.push_back(false);
+	//					i++;
+	//				} else if (formatString[i + 1] == 'd' ||
+	//						formatString[i + 1] == 'i' ||
+	//						formatString[i + 1] == 'o' ||
+	//						formatString[i + 1] == 'u' ||
+	//						formatString[i + 1] == 'x' ||
+	//						formatString[i + 1] == 'X' ||
+	//						formatString[i + 1] == 'p' ||
+	//						formatString[i + 1] == 'h' ||
+	//						formatString[i + 1] == 'l') {
+	//					vaza.push_back(true);
+	//					isString.push_back(false);
+	//					i++;
+	//				} else if (formatString[i + 1] == 's') { // Special case
+	//
+	//					vaza.push_back(true);
+	//					isString.push_back(true);
+	//					//					isString[vaza.size() - 1] = true;
+	//					i++;
+	//				}
+	//			}
+	//		}
+	//	}
+
+	for (int i = 0; i < vaza.size(); i++)
+	{
+		if (vaza[i])
+		{
+			if (isString[i])
+			{
+
+				Value* arg = cs->getArgument(i + 1);
+				if (targetData->getTypeSizeInBits(arg->getType()) != targetData->getTypeSizeInBits(Type::getInt8PtrTy(*context)))
+				{
+					db("Strange printf: " << *cs->getInstruction());
+				}
+				assert(targetData->getTypeSizeInBits(arg->getType()) == targetData->getTypeSizeInBits(Type::getInt8PtrTy(*context)));
+				BitCastInst* cast = new BitCastInst(arg, Type::getInt8PtrTy(*context), "", cs->getInstruction());
+				assert(targetData->getTypeSizeInBits(Type::getInt8PtrTy(*context)) == targetData->getTypeSizeInBits(arg->getType()));
+				Function& assertStringFunction = GetAssertStringFunction();
+				std::vector<Value*> args;
+				args.push_back(cast);
+				CallInst::Create(&assertStringFunction, args, "", cs->getInstruction());
+			}
+			else
+			{
+				Value* arg = cs->getArgument(i + 1);
+
+				Value& shadow = GetShadow(*arg);
+				ICmpInst* cmp = new ICmpInst(cs->getInstruction(), CmpInst::ICMP_NE, &shadow, Constant::getNullValue(shadow.getType()), "");
 				Function& assertZero = GetAssertZeroFunction();
 				std::vector<Value*> args;
 				args.push_back(cmp);
-				CallInst* assertZeroCall = CallInst::Create(&assertZero, args, "", call); //TODO: memory leak?
+				CallInst* assertZeroCall = CallInst::Create(&assertZero, args, "", cs->getInstruction()); //TODO: memory leak?
 			}
-//			else if (name.startswith("llvm.memcpy"))
-//			{
-//				Value* src = call->getOperand(0);
-//				Value* dest = call->getOperand(1);
-//				Value* len = call->getOperand(2);
-//				Value* align = call->getOperand(3);
-//				Value* isVolatile = call->getOperand(4);
-//				
-//				Value& newSrc = CreateTranslateCall(*src, *call);
-//				Value& newDest = CreateTranslateCall(*dest, *call);
-//				
-//				std::vector<Value*> args;
-//				args.push_back(&newSrc);
-//				args.push_back(&newDest);
-//				args.push_back(len);
-//				args.push_back(align);
-//				args.push_back(isVolatile);
-//				new CallInst(&f, )
-//			}
+		}
+
+	}
+
+
+}
+
+void Optimized::HandleUses(Value& v)
+{
+	Value& shadow = GetShadow(v);
+
+	for (Value::use_iterator it = v.use_begin(), end = v.use_end(); it != end; it++)
+	{
+		//TODO: this may be an invoke or something like that
+		Value* call = dyn_cast<CallInst>(*it);
+
+		if (! call)
+		{
+			call = dyn_cast<InvokeInst>(*it);  
+		}	
+
+		if (call) 
+		{
+			CallSite* cs = new CallSite(call);
+
+			Function* f = cs->getCalledFunction();
+
+			if (f == 0) continue;
+			StringRef name = f->getName();
+
+			if (name.equals("printf"))
+			{
+				HandlePrintf(cs);
+			}
+			//			else if (name.startswith("llvm.memcpy"))
+			//			{
+			//				Value* src = call->getOperand(0);
+			//				Value* dest = call->getOperand(1);
+			//				Value* len = call->getOperand(2);
+			//				Value* align = call->getOperand(3);
+			//				Value* isVolatile = call->getOperand(4);
+			//				
+			//				Value& newSrc = CreateTranslateCall(*src, *call);
+			//				Value& newDest = CreateTranslateCall(*dest, *call);
+			//				
+			//				std::vector<Value*> args;
+			//				args.push_back(&newSrc);
+			//				args.push_back(&newDest);
+			//				args.push_back(len);
+			//				args.push_back(align);
+			//				args.push_back(isVolatile);
+			//				new CallInst(&f, )
+			//			}
 		}
 		else 
 		{
@@ -114,14 +362,12 @@ void Optimized::HandleUses(Value& v)
 			StoreInst* store = dyn_cast<StoreInst>(*it);
 			if (store)
 			{
-				
+
 				if (store->getValueOperand() == &v)
 				{
 					Value& shadowPtr = CreateTranslateCall(*store->getPointerOperand(), *store);
-					
+
 					StoreInst* x = new StoreInst(&shadow, &shadowPtr, store); //TODO: memory leak?
-					
-					
 				}
 			}
 		}
@@ -157,7 +403,6 @@ void Optimized::HandleMemcpy(MemCpyInst& i)
 	args.push_back(i.getAlignmentCst());
 	args.push_back(i.getVolatileCst());
 	CallInst* c = CallInst::Create(f, args, "", &i);
-	db("Original memcpy: " << i << "\nNew memcpy: " << *c << "\n")
 }
 
 //TODO: Look whether while loops (anything that depends on itself would work) would break this
@@ -168,92 +413,105 @@ void Optimized::Setup(Module& module)
 	this->module = &module;
 	this->context = &module.getContext();
 	targetData = new TargetData(&module);
-//	SetupParamPassingShadows();
-//	
+	//	SetupParamPassingShadows();
+	//	
 	Function& f = GetInitFunction();
-	
-//	//TODO: This may not be the best way to do it
+
+	//	//TODO: This may not be the best way to do it
 	Function* main = module.getFunction("main");
 	Instruction* first = main->getEntryBlock().getFirstNonPHI();
 	CallInst* init = CallInst::Create(&f, "", first); //TODO: memory leak?
+	if (dumb) MarkAsInstrumented(*init); //TODO: not sure if needed
 
-//	Function* main = module.getFunction("main");
-//	Function::ArgumentListType& argList =  main->getArgumentList();
-	
+	//	Function* main = module.getFunction("main");
+	//	Function::ArgumentListType& argList =  main->getArgumentList();
+
 	//@todo this assumes that in main you either have 0 parameters or 2
-//	if (argList.size() >= 2)
-//	{
-//		Argument& argc = argList.front();
-//		Argument& argv = *argList.getNext(&argc);
-//		Function& createArgvShadow = GetCreateArgvShadowFunction();
-//		std::vector<Value*> args;
-//		args.push_back(&argc);
-//		args.push_back(&argv);
-//		CallInst* callToCreateArgvShadow = CallInst::Create(&createArgvShadow, args, "", &*instructionIt);
-//		AddShadowMemory(argv, *callToCreateArgvShadow);
-//		AddShadowMemory(argc, GetNullValue(*Type::getInt32Ty(*context)));
-//		MarkAsNotOriginal(*callToCreateArgvShadow);
-//	}
+	//	if (argList.size() >= 2)
+	//	{
+	//		Argument& argc = argList.front();
+	//		Argument& argv = *argList.getNext(&argc);
+	//		Function& createArgvShadow = GetCreateArgvShadowFunction();
+	//		std::vector<Value*> args;
+	//		args.push_back(&argc);
+	//		args.push_back(&argv);
+	//		CallInst* callToCreateArgvShadow = CallInst::Create(&createArgvShadow, args, "", &*instructionIt);
+	//		AddShadowMemory(argv, *callToCreateArgvShadow);
+	//		AddShadowMemory(argc, GetNullValue(*Type::getInt32Ty(*context)));
+	//		MarkAsNotOriginal(*callToCreateArgvShadow);
+	//	}
 }
 
 Value& Optimized::Instrument(Value& value)
 {
-	
-	Value* shadow;
-	
+	db("Instrumenting " << value)
+																											//	MarkAsInstrumented(value);
+
+																											Value* shadow;
+
 	Instruction* i;
 	GlobalVariable* gv;
 	Argument* param;
 	Constant* c;
-	
+
 	i = dyn_cast<Instruction>(&value);
-	
+
 	if (i)
 	{
+
 		shadow = &Instrument(*i);
 		goto end;
 	}
-	
+
 	gv = dyn_cast<GlobalVariable>(&value);
-	
+
 	if (gv)
 	{	
-		shadow = &GetAllOnesValue(*gv->getType());
+		shadow = &GetAllOnesValue(*ConvertType(gv->getType()));
 		goto end;
 	}
 
 	param = dyn_cast<Argument>(&value);
-	
+
 	if (param)
 	{
+		db("Handling param");
 		//TODO: Maybe there are ways to discover whether the param is constant
-		
-		GlobalVariable* paramGV = new GlobalVariable(*module, param->getType(), false, GlobalValue::CommonLinkage, &GetNullValue(*param->getType()), "");  //TODO: not sure if this linkage is the right one
-		
+
+		GlobalVariable& paramGV = GetParamGlobal(*param);
+		db("paramGV=" << paramGV);
+
 		Function* f = param->getParent();
+		assert(f != 0);
 		BasicBlock& b = f->getEntryBlock();
 		Instruction* firstInstruction = b.getFirstNonPHI();
-		shadow = new LoadInst(paramGV, "", firstInstruction);
-		
-		HandleParamPassingTo(*f, param->getArgNo(), paramGV);
-		
+
+		BitCastInst* cast = new BitCastInst(&paramGV, ConvertType(param->getType())->getPointerTo(), "", firstInstruction); //TODO: not sure if I need to specify the address space
+		db("cast=" << *cast)
+		assert(targetData->getTypeSizeInBits(ConvertType(param->getType())->getPointerTo()) == targetData->getTypeSizeInBits(paramGV.getType()));
+
+		shadow = new LoadInst(cast, "", firstInstruction);
+		db("shadow=" << *shadow)
+		AddShadow(value, *shadow);
+		HandleParamPassingTo(*f, param->getArgNo(), &paramGV);
+
 		goto end;
 
-//		Function& f = *param->getParent();
-//		BasicBlock& entry = f.getBasicBlockList().front(); //TODO: not sure if it does what I expect it to do
-////		GlobalVariable& gv = GetParamGlobal(*param);
-//		shadow = new LoadInst(&gv, "", entry.getFirstNonPHI());
-//		AddShadow(*param, *shadow); //TODO: It's done here rather than in "end" because of recursive functions
-//		HandleParamPassingTo(*param->getParent());
-//		goto end;
+		//		Function& f = *param->getParent();
+		//		BasicBlock& entry = f.getBasicBlockList().front(); //TODO: not sure if it does what I expect it to do
+		////		GlobalVariable& gv = GetParamGlobal(*param);
+		//		shadow = new LoadInst(&gv, "", entry.getFirstNonPHI());
+		//		AddShadow(*param, *shadow); //TODO: It's done here rather than in "end" because of recursive functions
+		//		HandleParamPassingTo(*param->getParent());
+		//		goto end;
 	}
-	
+
 	c = dyn_cast<Constant>(&value);
-	
+
 	if (c)
 	{
 		bool ptr = false;
-		
+
 		for (Constant::op_iterator it = c->op_begin(), end = c->op_end(); it != end; it++)
 		{
 			Value* v = *it;
@@ -263,7 +521,7 @@ Value& Optimized::Instrument(Value& value)
 				break;
 			}
 		}
-		
+
 		if (ptr)
 		{
 			shadow = &GetAllOnesValue(*value.getType());
@@ -272,381 +530,446 @@ Value& Optimized::Instrument(Value& value)
 		{
 			shadow = &GetNullValue(*value.getType());
 		}
-		
+
 		goto end;
 	}
-	
+
 	if (value.getType()->isPointerTy())
 	{
 		shadow = &GetAllOnesValue(*value.getType());
 		goto end;
 	}
-	
-	
-	
-	
-	
+
+
+
+
+
 	assert(0 && "Shouldn't reach here");
 
-//	std::map<Value*, Value*>::iterator it = valueToShadow.find(&value);
-//
-//	if (it != valueToShadow.end())
-//	{
-//		return *it->second;
-//	}
-//
-//	Instruction* instruction = dyn_cast<Instruction>(&value);
-//
-//	if (instruction)
-//	{
-//		Value* shadow = Instrument(*instruction);
-//		assert(shadow != 0);
-//		return *shadow;
-//	}
+	//	std::map<Value*, Value*>::iterator it = valueToShadow.find(&value);
+	//
+	//	if (it != valueToShadow.end())
+	//	{
+	//		return *it->second;
+	//	}
+	//
+	//	Instruction* instruction = dyn_cast<Instruction>(&value);
+	//
+	//	if (instruction)
+	//	{
+	//		Value* shadow = Instrument(*instruction);
+	//		assert(shadow != 0);
+	//		return *shadow;
+	//	}
 
-end:
+	end:
 	assert(shadow != 0);
 	AddShadow(value, *shadow);
-	
+
+
 	MarkAsInstrumented(value);
+	MarkAsInstrumented(*shadow);
 	return *shadow;
 }
 
 Value& Optimized::Instrument(Instruction& instruction)
 {	
+
 	Value* newShadow = 0;
-	
+
 	//TODO: Make tests with type conversions including floats
 	if (instruction.isBinaryOp())
 	{
+
 		BinaryOperator& bin = cast<BinaryOperator>(instruction);
 		Value& op1 = *bin.getOperand(0);
+
 		Value& op2 = *bin.getOperand(1);
+
 		Value& shadow1 = GetShadow(op1);
+
 		Value& shadow2 = GetShadow(op2);
+
 		newShadow = BinaryOperator::Create(Instruction::Or, &shadow1, &shadow2, "", &instruction);
+
 		return *newShadow;
 	}
 
 	switch (instruction.getOpcode())
 	{
-		//TODO: Handle vector operations
-//		case Instruction::Ret:
-//		{
-//			assert(0 && 'This should never happen since this isntruction does not produce a value');
-////			ReturnInst& ret = cast<ReturnInst>(instruction);
-////			if (ret.getNumOperands() == 0) break;
-////			
-////			Value& op = *ret.getOperand(0);
-////			Value& shadow = GetShadow(op);
-////			GlobalVariable& returnShadow = GetReturnShadow(*shadow.getType());
-////			StoreInst* store = new StoreInst(&shadow, &returnShadow, &instruction); 
-////			MarkAsNotOriginal(*store);
-//			break;
-//		}
-//		case Instruction::Invoke:
-//		{
-//			//TODO: I'll do this later
-//			break;
-//		}
-//		case Instruction::Resume:
-//		{
-//			//TODO: I'll do this later
-//			break;
-//		}
-		case Instruction::ExtractValue: //@todo Remember to test this
-		{
-			ExtractValueInst& extract = cast<ExtractValueInst>(instruction);
-			Value* agg = extract.getAggregateOperand();
-			Value& shadow = GetShadow(*agg);
-			newShadow = ExtractValueInst::Create(&shadow, extract.getIndices(), "", &instruction);
-			break;
-		}
-//		case Instruction::InsertValue: //@todo Remember to test this
-//		{
-//			assert(0 && 'This should never happen since this isntruction does not produce a value');
-////			InsertValueInst& insert = cast<InsertValueInst>(instruction);
-////			Value* agg =  insert.getAggregateOperand();
-////			Value& aggShadow = GetShadow(*agg);
-////			Value* insertedValue = insert.getInsertedValueOperand();
-////			Value& insertedValueShadow = GetShadow(*insertedValue);
-////			newShadow = InsertValueInst::Create(&aggShadow, &insertedValueShadow, insert.getIndices(), "", &instruction);
-//			break;
-//		}
-		case Instruction::Alloca:
-		{
-			
-//			//TODO: Add align info (I'm not sure of how relevant this is)
-			AllocaInst& alloca = cast<AllocaInst>(instruction);
-			newShadow = &GetAllOnesValue(*alloca.getType());
-//			
-//			newShadow = &GetAllOnesValue(*alloca.getType());
-//			
-//			//duplicating the alloca (creating the shadow memory)
-//			AllocaInst* allocaClone = new AllocaInst(alloca.getAllocatedType(), alloca.getArraySize(), "", &instruction);
-//			MarkAsNotOriginal(*allocaClone);
-//			
-////			int typeSizeInBytes = targetData->getTypeStoreSize(alloca.getAllocatedType());
-////			Value* arraySize = alloca.getArraySize();
-////			int arraySizeSizeInBits = targetData->getTypeSizeInBits(arraySize->getType());
-////			BinaryOperator* mul = BinaryOperator::Create(Instruction::Mul, arraySize, &GetInt(arraySizeSizeInBits, typeSizeInBytes), "", &instruction);
-////			MarkAsNotOriginal(*mul);
-////			CreateAndInsertFillMemoryCode(*allocaClone, *mul, GetInt(8,0), instruction);
-//			
-//			AddShadowMemory(alloca, *allocaClone);
-//			
-//			//storing the relationship memory <---> shadow memory in the hash table
-//			Function& addInHashFunction = GetAddInHashFunction();
-//			std::vector<Value*> args;	
-//			Instruction* nextInstruction = GetNextInstruction(instruction);
-//			BitCastInst* cast = new BitCastInst(&alloca, Type::getInt8PtrTy(*context), "", nextInstruction);
-//			MarkAsNotOriginal(*cast);
-//			args.push_back(cast);
-//			BitCastInst* castClone = new BitCastInst(allocaClone, Type::getInt8PtrTy(*context), "", nextInstruction);
-//			MarkAsNotOriginal(*castClone);
-//			args.push_back(castClone);
-//			CallInst* call = CallInst::Create(&addInHashFunction, args, "", nextInstruction); 
-//			MarkAsNotOriginal(*call);
-			break;
-		}
-		case Instruction::Load:
-		{
-			LoadInst& load = cast<LoadInst>(instruction);
-//			
-			Value* pointer = load.getPointerOperand();
-			Value& pointerShadowMemory = CreateTranslateCall(*pointer, load);
-//			
-			newShadow = new LoadInst(&pointerShadowMemory, "", &instruction);
-//			
-//			if (load.getType()->isPointerTy())
-//			{
-//				//getting from the hash the pointer to the shadow memory relative to the result of the load
-//				Function& f = GetGetFromHashFunction();
-//				std::vector<Value*> args;
-//				Instruction* nextInstruction = GetNextInstruction(instruction);
-//				BitCastInst* cast = new BitCastInst(&load, Type::getInt8PtrTy(*context), "", nextInstruction);
-//				MarkAsNotOriginal(*cast);
-//				args.push_back(cast);
-//				CallInst* call = CallInst::Create(&f, args, "", nextInstruction);
-//				MarkAsNotOriginal(*call);
-//				BitCastInst* res = new BitCastInst(call, load.getType(), "", nextInstruction);
-//				MarkAsNotOriginal(*res);
-//				AddShadowMemory(load, *res);
-//			}
-			
-			break;
-		}
-//		case Instruction::Store:
-//		{
-//			assert(0 && 'Should never be there since this instruction does not produce a value');
-////			StoreInst& store = cast<StoreInst>(instruction);
-////			Value* pointer = store.getPointerOperand();
-////			Value& pointerShadow = GetShadowMemory(*pointer);
-////			Value* storedValue = store.getValueOperand();
-////			Value& storedValueShadow = GetShadow(*storedValue);
-////			StoreInst* shadowStore = new StoreInst(&storedValueShadow, &pointerShadow, &instruction); 
-////			MarkAsNotOriginal(*shadowStore);
-//			break;
-//		}
-//		case Instruction::Fence:
-//		{
-//			//TODO: do later
-//			break;
-//		}
-//		case Instruction::CMPXCHG:
-//		{
-//			//TODO: Do this later
-//			break;
-//		}
-		//@todo atomic read write in memory
-		case Instruction::GetElementPtr:
-		{
-			GetElementPtrInst& gep = cast<GetElementPtrInst>(instruction);
-			newShadow = &GetAllOnesValue(*gep.getType());
-			
-//			Value* pointer = gep.getPointerOperand();
-//			Value& shadow = GetShadowMemory(*pointer);
-//			newShadow = new BitCastInst(&shadow, gep.getType(), "", &gep);
-			
-//			Value& pointerShadowMemory = GetShadowMemory(*pointer);
-//			
-//			std::vector<Value*> idx;
-//
-//			for (GetElementPtrInst::op_iterator it = gep.idx_begin(), itEnd = gep.idx_end(); it != itEnd; ++it)
-//			{
-//				idx.push_back(*it);
-//			}
-//			
-//			GetElementPtrInst* shadowGep = GetElementPtrInst::Create(&pointerShadowMemory, idx, "", &instruction); //@todo Memory leak
-//			MarkAsNotOriginal(*shadowGep);
-//			AddShadowMemory(gep, *shadowGep);
-//
-//			newShadow = &GetAllOnesValue(*gep.getType());
+	case Instruction::LandingPad:
+	{
+		LandingPadInst& lpad = cast<LandingPadInst>(instruction);
+		lpad.inser
+		break;
+	}
+	//TODO: Handle vector operations
+	//		case Instruction::Ret:
+	//		{
+	//			assert(0 && 'This should never happen since this isntruction does not produce a value');
+	////			ReturnInst& ret = cast<ReturnInst>(instruction);
+	////			if (ret.getNumOperands() == 0) break;
+	////			
+	////			Value& op = *ret.getOperand(0);
+	////			Value& shadow = GetShadow(op);
+	////			GlobalVariable& returnShadow = GetReturnShadow(*shadow.getType());
+	////			StoreInst* store = new StoreInst(&shadow, &returnShadow, &instruction); 
+	////			MarkAsNotOriginal(*store);
+	//			break;
+	//		}
+	//		case Instruction::Resume:
+	//		{
+	//			//TODO: I'll do this later
+	//			break;
+	//		}
+	case Instruction::ExtractValue: //TODO: This probably is wrong
+	{
+		ExtractValueInst& extract = cast<ExtractValueInst>(instruction);
+		Value* agg = extract.getAggregateOperand();
+		Value& shadow = GetShadow(*agg);
+		BitCastInst* toAgg = new BitCastInst(&shadow, agg->getType(), "", &instruction);
+		ExtractValueInst* shadowAgg = ExtractValueInst::Create(toAgg, extract.getIndices(), "", &instruction);
+		newShadow = new BitCastInst(shadowAgg, ConvertType(shadowAgg->getType()), "", &instruction);
+		break;
+	}
+	//		case Instruction::InsertValue: //@todo Remember to test this
+	//		{
+	//			assert(0 && 'This should never happen since this isntruction does not produce a value');
+	////			InsertValueInst& insert = cast<InsertValueInst>(instruction);
+	////			Value* agg =  insert.getAggregateOperand();
+	////			Value& aggShadow = GetShadow(*agg);
+	////			Value* insertedValue = insert.getInsertedValueOperand();
+	////			Value& insertedValueShadow = GetShadow(*insertedValue);
+	////			newShadow = InsertValueInst::Create(&aggShadow, &insertedValueShadow, insert.getIndices(), "", &instruction);
+	//			break;
+	//		}
+	case Instruction::Alloca:
+	{
 
-			break;
-		}
-		//@todo conversion operators
-		case Instruction::BitCast:
-		{
-			BitCastInst& bitcast = cast<BitCastInst>(instruction);
-			Value& shadow = GetShadow(*bitcast.getOperand(0));
-			newShadow = new BitCastInst(&shadow, bitcast.getDestTy(), "", &instruction);
-			
-//			if (bitcast.getOperand(0)->getType()->isPointerTy())
-//			{
-//				Value& shadowMemory = GetShadowMemory(*bitcast.getOperand(0));
-//				BitCastInst* newShadowMemory = new BitCastInst(&shadowMemory, bitcast.getDestTy(), "", &instruction);
-//				AddShadowMemory(bitcast, *newShadowMemory);
-//				MarkAsNotOriginal(*newShadowMemory);
-//			}
-//			
-			break;
-		}
-		case Instruction::ICmp:
-		case Instruction::FCmp:
-		{
-			newShadow = &GetNullValue(*instruction.getType());
-			break;
-		}
-		case Instruction::PHI:
-		{
-			PHINode& phi = cast<PHINode>(instruction);
-			newShadow = PHINode::Create(phi.getType(), 0, "", &instruction);  //@todo I put NumReservedValues=0 because it's the safe choice and I don't know how to get the original one
-			delayedPHINodes.insert(std::pair<PHINode*, PHINode*>(&phi, cast<PHINode>(newShadow)));
-			
-//			if (phi.getType()->isPointerTy())
-//			{
-//				PHINode* newMemoryShadow = PHINode::Create(phi.getType(), 0, "", &instruction); 
-//				AddShadowMemory(phi, *newMemoryShadow);
-//				delayedPHIShadowMemoryNodes.insert(std::pair<PHINode*, PHINode*>(&phi, cast<PHINode>(newMemoryShadow)));
-//			}
-			
-			break;
-		}
-		case Instruction::Select:
-		{
-			SelectInst& select = cast<SelectInst>(instruction);
-			Value& trueCondValueShadow = GetShadow(*select.getTrueValue());
-			Value& falseCondValueShadow = GetShadow(*select.getFalseValue());
-			newShadow = SelectInst::Create(select.getCondition(), &trueCondValueShadow, &falseCondValueShadow, "", &instruction);
-			break;
-		}
-		case Instruction::Call:
-		{
-			//TODO: remember to handle varargs
-			
-			CallInst& call = cast<CallInst>(instruction);
-			Function& func = *call.getCalledFunction();
-			
-			
+		//			//TODO: Add align info (I'm not sure of how relevant this is)
+		AllocaInst& alloca = cast<AllocaInst>(instruction);
+		newShadow = &GetAllOnesValue(*alloca.getType());
+		//			
+		//			newShadow = &GetAllOnesValue(*alloca.getType());
+		//			
+		//			//duplicating the alloca (creating the shadow memory)
+		//			AllocaInst* allocaClone = new AllocaInst(alloca.getAllocatedType(), alloca.getArraySize(), "", &instruction);
+		//			MarkAsNotOriginal(*allocaClone);
+		//			
+		////			int typeSizeInBytes = targetData->getTypeStoreSize(alloca.getAllocatedType());
+		////			Value* arraySize = alloca.getArraySize();
+		////			int arraySizeSizeInBits = targetData->getTypeSizeInBits(arraySize->getType());
+		////			BinaryOperator* mul = BinaryOperator::Create(Instruction::Mul, arraySize, &GetInt(arraySizeSizeInBits, typeSizeInBytes), "", &instruction);
+		////			MarkAsNotOriginal(*mul);
+		////			CreateAndInsertFillMemoryCode(*allocaClone, *mul, GetInt(8,0), instruction);
+		//			
+		//			AddShadowMemory(alloca, *allocaClone);
+		//			
+		//			//storing the relationship memory <---> shadow memory in the hash table
+		//			Function& addInHashFunction = GetAddInHashFunction();
+		//			std::vector<Value*> args;	
+		//			Instruction* nextInstruction = GetNextInstruction(instruction);
+		//			BitCastInst* cast = new BitCastInst(&alloca, Type::getInt8PtrTy(*context), "", nextInstruction);
+		//			MarkAsNotOriginal(*cast);
+		//			args.push_back(cast);
+		//			BitCastInst* castClone = new BitCastInst(allocaClone, Type::getInt8PtrTy(*context), "", nextInstruction);
+		//			MarkAsNotOriginal(*castClone);
+		//			args.push_back(castClone);
+		//			CallInst* call = CallInst::Create(&addInHashFunction, args, "", nextInstruction); 
+		//			MarkAsNotOriginal(*call);
+		break;
+	}
+	case Instruction::Load:
+	{
+		LoadInst& load = cast<LoadInst>(instruction);
+		//			
+		Value* pointer = load.getPointerOperand();
+		Value& pointerShadowMemory = CreateTranslateCall(*pointer, load);
+		//			
+		newShadow = new LoadInst(&pointerShadowMemory, "", &instruction);
+		//			
+		//			if (load.getType()->isPointerTy())
+		//			{
+		//				//getting from the hash the pointer to the shadow memory relative to the result of the load
+		//				Function& f = GetGetFromHashFunction();
+		//				std::vector<Value*> args;
+		//				Instruction* nextInstruction = GetNextInstruction(instruction);
+		//				BitCastInst* cast = new BitCastInst(&load, Type::getInt8PtrTy(*context), "", nextInstruction);
+		//				MarkAsNotOriginal(*cast);
+		//				args.push_back(cast);
+		//				CallInst* call = CallInst::Create(&f, args, "", nextInstruction);
+		//				MarkAsNotOriginal(*call);
+		//				BitCastInst* res = new BitCastInst(call, load.getType(), "", nextInstruction);
+		//				MarkAsNotOriginal(*res);
+		//				AddShadowMemory(load, *res);
+		//			}
 
-			if (! HasBody(func))
+		break;
+	}
+	//	case Instruction::Store:
+	//	{
+	//		return GetNullValue(*instruction.getType());
+	//		//				assert(0 && 'Should never be there since this instruction does not produce a value');
+	//		//			StoreInst& store = cast<StoreInst>(instruction);
+	//		//			Value* pointer = store.getPointerOperand();
+	//		//			Value& pointerShadow = GetShadowMemory(*pointer);
+	//		//			Value* storedValue = store.getValueOperand();
+	//		//			Value& storedValueShadow = GetShadow(*storedValue);
+	//		//			StoreInst* shadowStore = new StoreInst(&storedValueShadow, &pointerShadow, &instruction); 
+	//		//			MarkAsNotOriginal(*shadowStore);
+	//		break;
+	//	}
+	//		case Instruction::Fence:
+	//		{
+	//			//TODO: do later
+	//			break;
+	//		}
+	//		case Instruction::CMPXCHG:
+	//		{
+	//			//TODO: Do this later
+	//			break;
+	//		}
+	//@todo atomic read write in memory
+	case Instruction::GetElementPtr:
+	{
+		GetElementPtrInst& gep = cast<GetElementPtrInst>(instruction);
+		newShadow = &GetAllOnesValue(*gep.getType());
+
+		//			Value* pointer = gep.getPointerOperand();
+		//			Value& shadow = GetShadowMemory(*pointer);
+		//			newShadow = new BitCastInst(&shadow, gep.getType(), "", &gep);
+
+		//			Value& pointerShadowMemory = GetShadowMemory(*pointer);
+		//			
+		//			std::vector<Value*> idx;
+		//
+		//			for (GetElementPtrInst::op_iterator it = gep.idx_begin(), itEnd = gep.idx_end(); it != itEnd; ++it)
+		//			{
+		//				idx.push_back(*it);
+		//			}
+		//			
+		//			GetElementPtrInst* shadowGep = GetElementPtrInst::Create(&pointerShadowMemory, idx, "", &instruction); //@todo Memory leak
+		//			MarkAsNotOriginal(*shadowGep);
+		//			AddShadowMemory(gep, *shadowGep);
+		//
+		//			newShadow = &GetAllOnesValue(*gep.getType());
+
+		break;
+	}
+	//@todo conversion operators
+	case Instruction::BitCast:
+	{
+		BitCastInst& bitcast = cast<BitCastInst>(instruction);
+		//		Value& shadow = GetShadow(*bitcast.getOperand(0));
+		//		newShadow = new BitCastInst(&shadow, bitcast.getDestTy(), "", &instruction);
+		newShadow = &GetShadow(*bitcast.getOperand(0));
+
+		//			if (bitcast.getOperand(0)->getType()->isPointerTy())
+		//			{
+		//				Value& shadowMemory = GetShadowMemory(*bitcast.getOperand(0));
+		//				BitCastInst* newShadowMemory = new BitCastInst(&shadowMemory, bitcast.getDestTy(), "", &instruction);
+		//				AddShadowMemory(bitcast, *newShadowMemory);
+		//				MarkAsNotOriginal(*newShadowMemory);
+		//			}
+		//			
+		break;
+	}
+	case Instruction::ICmp:
+	case Instruction::FCmp:
+	{
+		newShadow = &GetNullValue(*instruction.getType());
+		break;
+	}
+	case Instruction::PHI:
+	{
+		PHINode& phi = cast<PHINode>(instruction);
+		newShadow = PHINode::Create(ConvertType(phi.getType()), 0, "", &instruction);  //TODO: I put NumReservedValues=0 because it's the safe choice and I don't know how to get the original one
+		delayedPHINodes.insert(std::pair<PHINode*, PHINode*>(&phi, cast<PHINode>(newShadow)));
+
+		//			if (phi.getType()->isPointerTy())
+		//			{
+		//				PHINode* newMemoryShadow = PHINode::Create(phi.getType(), 0, "", &instruction); 
+		//				AddShadowMemory(phi, *newMemoryShadow);
+		//				delayedPHIShadowMemoryNodes.insert(std::pair<PHINode*, PHINode*>(&phi, cast<PHINode>(newMemoryShadow)));
+		//			}
+
+		break;
+	}
+	case Instruction::Select:
+	{
+		SelectInst& select = cast<SelectInst>(instruction);
+		Value& trueCondValueShadow = GetShadow(*select.getTrueValue());
+		Value& falseCondValueShadow = GetShadow(*select.getFalseValue());
+		newShadow = SelectInst::Create(select.getCondition(), &trueCondValueShadow, &falseCondValueShadow, "", &instruction);
+		break;
+	}
+	case Instruction::Invoke:
+	{
+		db("Handling invoke");
+		InvokeInst& call = cast<InvokeInst>(instruction);
+		Value* v = call.getCalledValue();
+
+		if (call.getCalledFunction() != 0)
+		{
+			Function* func = call.getCalledFunction();
+
+			if (! HasBody(*func))
 			{	
-				
 				CallSite cs(&call);
 				newShadow = HandleExternFunctionCall(cs);
 				break;
 			}
-			else
-			{	
-				HandleReturns(func);
-//				Function::ArgumentListType& paramList = func.getArgumentList();
-//				Function::ArgumentListType::iterator it = paramList.begin();
-//				
-//				for (int i = 0; i < call.getNumArgOperands(); i++, paramList++)
-//				{
-//					Value* arg = call.getArgOperand(i);
-//					Value& argShadow = GetShadow(*arg);
-//					Argument& param = *paramList;
-//					GlobalVariable& paramGlobal = GetParamGlobal(param);
-//					StoreInst* store = new StoreInst(&argShadow, &paramGlobal, &instruction); //@todo memory leak
-//				}
-//	
-				Instruction* nextInstruction = GetNextInstruction(instruction);
-				Value& returnShadow = GetReturnGlobal(func);
-				newShadow = new LoadInst(&returnShadow, "", nextInstruction); 
+			else if (func->getReturnType() != Type::getVoidTy(*context)) {
+				HandleReturns(*func);			
 			}
+		}
+
+		Instruction* nextInstruction = GetNextInstruction(instruction);
+		FunctionType* t = cast<FunctionType>(v->getType()->getContainedType(0));
+		db("Function type=" << *t);
+		Value& returnShadow = GetReturnGlobal(*t->getReturnType());
+		db("Return shadow=" << returnShadow);
+		newShadow = new LoadInst(&returnShadow, "", nextInstruction); 
+		//		db("newShadow=" << *newShadow);
+
+		break;
+	}
+	case Instruction::Call:
+	{
+		CallInst& call = cast<CallInst>(instruction);
+		Value* v = call.getCalledValue();
+
+		if (call.getCalledFunction() != 0)
+		{
+			Function* func = call.getCalledFunction();
+
+			if (! HasBody(*func))
+			{	
+				CallSite cs(&call);
+				newShadow = HandleExternFunctionCall(cs);
+				break;
+			}
+			else if (func->getReturnType() != Type::getVoidTy(*context)) {
+				HandleReturns(*func);			
+			}
+		}
+
+		Instruction* nextInstruction = GetNextInstruction(instruction);
+		db("Type is " << *v->getType());
+		FunctionType* t = cast<FunctionType>(v->getType()->getContainedType(0));
+		Value& returnShadow = GetReturnGlobal(*t->getReturnType());
+		newShadow = new LoadInst(&returnShadow, "", nextInstruction); 
+
+		break;
+	}
+	case Instruction::Trunc:    
+	{
+		TruncInst& trunc = cast<TruncInst>(instruction);
+		Value& shadow = GetShadow(*trunc.getOperand(0));
+		newShadow = new TruncInst(&shadow, ConvertType(trunc.getDestTy()), "", &instruction);
+		break;
+	}
+	case Instruction::ZExt:     
+	{
+		ZExtInst& zext = cast<ZExtInst>(instruction);
+		Value& shadow = GetShadow(*zext.getOperand(0));
+		newShadow = new ZExtInst(&shadow, ConvertType(zext.getDestTy()), "", &instruction);
+		break;
+	}
+	case Instruction::SExt:      
+	{
+		SExtInst& sext = cast<SExtInst>(instruction);
+		Value& shadow = GetShadow(*sext.getOperand(0));
+		newShadow = new SExtInst(&shadow, ConvertType(sext.getDestTy()), "", &instruction);
+		break;
+	}
+	//@todo Do those later
+	//		case Instruction::FPTrunc:   
+	//		case Instruction::FPExt:     
+	//		case Instruction::FPToUI:    
+	//		case Instruction::FPToSI:   
+	//		case Instruction::UIToFP:    
+	case Instruction::SIToFP:   
+	{
+		SIToFPInst& conv = cast<SIToFPInst>(instruction);
+		Type* destType = ConvertType(conv.getDestTy());
+		int destSize = targetData->getTypeSizeInBits(destType);
+		Value& shadow = GetShadow(*conv.getOperand(0));
+		Type* srcType = shadow.getType();
+		int srcSize = targetData->getTypeSizeInBits(srcType);
+
+		if (srcSize > destSize)
+		{
+			newShadow = new TruncInst(&shadow,  destType, "", &instruction); //TODO: this is not the best solution/is ugly/not sure if it works
+		}
+		else if (srcSize == destSize)
+		{
+			newShadow = &shadow;
+		}
+		else
+		{
+			newShadow = new SExtInst(&shadow, destType, "", &instruction); //TODO: this is not the best solution/is ugly/not sure if it works
+		}
 
 
-			break;
-		}
-		case Instruction::Trunc:    
+		break;
+	}
+	case Instruction::IntToPtr:  
+	{
+		IntToPtrInst& conv = cast<IntToPtrInst>(instruction);
+		Value& shadow = GetShadow(*conv.getOperand(0));
+		newShadow = new IntToPtrInst(&shadow, ConvertType(conv.getDestTy()), "", &instruction);
+		break;
+	}
+	case Instruction::PtrToInt: 
+	{
+		PtrToIntInst& conv = cast<PtrToIntInst>(instruction);
+		//		Value& shadow = GetShadow(*conv.getOperand(0));
+		//		newShadow = new PtrToIntInst(&shadow, ConvertType(conv.getDestTy()), "", &instruction);
+		newShadow = &GetShadow(*conv.getOperand(0));
+		break;
+	} 
+	//TODO: va_arg
+	//TODO: landingpad
+	default:
+	{
+
+		break;
+	}
+	}
+
+	end:
+
+	if (dumb && newShadow == 0)
+	{
+		newShadow = &GetNullValue(*instruction.getType());
+
+		if (newShadow == 0)
 		{
-			TruncInst& trunc = cast<TruncInst>(instruction);
-			Value& shadow = GetShadow(*trunc.getOperand(0));
-			newShadow = new TruncInst(&shadow, trunc.getDestTy(), "", &instruction);
-			break;
-		}
-		case Instruction::ZExt:     
-		{
-			ZExtInst& zext = cast<ZExtInst>(instruction);
-			Value& shadow = GetShadow(*zext.getOperand(0));
-			newShadow = new ZExtInst(&shadow, zext.getDestTy(), "", &instruction);
-			break;
-		}
-		case Instruction::SExt:      
-		{
-			SExtInst& sext = cast<SExtInst>(instruction);
-			Value& shadow = GetShadow(*sext.getOperand(0));
-			newShadow = new SExtInst(&shadow, sext.getDestTy(), "", &instruction);
-			break;
-		}
-		//@todo Do those later
-//		case Instruction::FPTrunc:   
-//		case Instruction::FPExt:     
-//		case Instruction::FPToUI:    
-//		case Instruction::FPToSI:   
-//		case Instruction::UIToFP:    
-		case Instruction::SIToFP:   
-		{
-			SIToFPInst& conv = cast<SIToFPInst>(instruction);
-			newShadow = new BitCastInst(conv.getOperand(0), conv.getDestTy(), "", &instruction);
-			break;
-		}
-		case Instruction::IntToPtr:  
-		{
-			IntToPtrInst& conv = cast<IntToPtrInst>(instruction);
-			Value& shadow = GetShadow(*conv.getOperand(0));
-			newShadow = new IntToPtrInst(&shadow, conv.getDestTy(), "", &instruction);
-			break;
-		}
-		case Instruction::PtrToInt: 
-		{
-			PtrToIntInst& conv = cast<PtrToIntInst>(instruction);
-			Value& shadow = GetShadow(*conv.getOperand(0));
-			newShadow = new PtrToIntInst(&shadow, conv.getDestTy(), "", &instruction);
-			break;
-		} 
-		//TODO: va_arg
-		//TODO: landingpad
-		default:
-		{
-			
-			break;
+			newShadow = &GetNullValue(*Type::getInt32Ty(*context)); //TODO: ugly way to fix the problem of void not having a shadow. fix later
 		}
 	}
-	
-end:
-	assert(newShadow != 0);
-//	if (newShadow != 0)
-//	{
-//		valueToShadow.insert(std::pair<Value*, Value*>(&instruction, newShadow));
-//		Instruction* i = dynamic_cast<Instruction*>(newShadow);
-//
-//		if (i)
-//		{
-//			MarkAsNotOriginal(*i);
-//		}
-//	}
 
-	
+	assert(newShadow != 0);
+	//	if (newShadow != 0)
+	//	{
+	//		valueToShadow.insert(std::pair<Value*, Value*>(&instruction, newShadow));
+	//		Instruction* i = dynamic_cast<Instruction*>(newShadow);
+	//
+	//		if (i)
+	//		{
+	//			MarkAsNotOriginal(*i);
+	//		}
+	//	}
+
+
 	return *newShadow;
 }
 
 Function& Optimized::GetAssertZeroFunction()
 {
 	static Function* assertZero = 0;
-	
+
 	if (assertZero != 0) return *assertZero;
 
 	std::vector<Type*> assertParams;
@@ -659,7 +982,7 @@ Function& Optimized::GetAssertZeroFunction()
 			module);
 	Function* quitProgram = Function::Create(FunctionType::get(Type::getVoidTy(*context), false),
 			GlobalValue::ExternalLinkage,
-			"abort",
+			"myAbort",
 			module);
 
 	BasicBlock* entry = BasicBlock::Create(*context, "entry", assertZero);
@@ -668,24 +991,24 @@ Function& Optimized::GetAssertZeroFunction()
 
 	BasicBlock* ifTrue = BasicBlock::Create(*context, "", assertZero);
 	ReturnInst* ret = ReturnInst::Create(*context, ifTrue);
-	
+
 	BasicBlock* ifFalse = BasicBlock::Create(*context, "", assertZero);
 
 	CallInst* call = CallInst::Create(quitProgram, "", ifFalse);
 
 	UnreachableInst* unr = new UnreachableInst(*context, ifFalse);
-	
+
 	BranchInst* branch = BranchInst::Create(ifTrue, ifFalse, cmp, entry);
-	
+
 	return GetAssertZeroFunction();
 }
 
 Function& Optimized::GetTranslateFunction()
 {
 	static Function* func = 0;
-	
+
 	if (func) return *func;
-	
+
 	std::vector<Type*> args;
 	args.push_back(Type::getInt8PtrTy(*context));
 	func = Function::Create(FunctionType::get(Type::getInt8PtrTy(*context), args, false), GlobalValue::ExternalLinkage, "translate", module);
@@ -701,7 +1024,7 @@ Function& Optimized::GetInitFunction()
 	func = Function::Create(FunctionType::get(Type::getVoidTy(*context), false), GlobalValue::ExternalLinkage, "createShadowMemory", module);
 	return *func;
 }
-	
+
 Constant& Optimized::GetInt(int width, int value)
 {
 	ConstantInt& constant = *ConstantInt::get(Type::getIntNTy(*context, width), value, true);
@@ -710,65 +1033,53 @@ Constant& Optimized::GetInt(int width, int value)
 
 Constant& Optimized::GetAllOnesValue(Type& type)
 {
-	int numBits = targetData->getTypeSizeInBits(&type);
-	uint64_t val = 0;
-	APInt ap(numBits, ~val, false);
-	return *Constant::getIntegerValue(&type, ap);
+	Type* t = Type::getIntNTy(*context, targetData->getTypeSizeInBits(&type));
+	return *Constant::getAllOnesValue(t);
 }
 
 Constant& Optimized::GetNullValue(Type& type)
 {
-	int numBits = targetData->getTypeSizeInBits(&type);
-	uint64_t val = 0;
-	APInt ap(numBits, val, false);
-	return *Constant::getIntegerValue(&type, ap);
+	Type* t = Type::getIntNTy(*context, targetData->getTypeSizeInBits(&type));
+	return *Constant::getNullValue(t);
 }
-
-//ConstantInt& Optimized::Get1FilledInt(int width)
-//{
-//	return GetInt(width, pow(2, width) - 1);
-//}
 
 bool Optimized::HasBody(Function& f)
 {
-	
+
 	return f.getBasicBlockList().size() != 0;
 }
 
 void Optimized::HandleReturns(Function& f)
 {
-	
-	
 	//TODO: remember to handle things like invoke vs call
 	static std::set<Function*> alreadyHandled;
-	
+
 	std::set<Function*>::iterator it = alreadyHandled.find(&f);
-	
+
 	if (it != alreadyHandled.end()) return;
-	
-	
-	GlobalVariable& returnGlobal = GetReturnGlobal(f);
-	
-	
-	
+
+	alreadyHandled.insert(&f);
+
+
+	GlobalVariable& returnGlobal = GetReturnGlobal(*f.getReturnType());
+
+
+
 	//TODO: this is really ugly. there has to be another way 
 	for (inst_iterator i = inst_begin(f), ie = inst_end(f); i != ie; ++i)
 	{
 		ReturnInst* ret = dyn_cast<ReturnInst>(&*i);
-		
+
 		if (ret) {
 			assert(ret->getNumOperands() >= 1);
 			Value& shadow = GetShadow(*ret->getOperand(0));
-			
-//			StoreInst* store = new StoreInst(&shadow, &returnGlobal, &ret); //TODO: memory leak?
+
+			//			StoreInst* store = new StoreInst(&shadow, &returnGlobal, &ret); //TODO: memory leak?
 			StoreInst* store = new StoreInst(&shadow, &returnGlobal, ret);
-			
-			
+
+
 		}
 	}
-	
-	
-	alreadyHandled.insert(&f);
 }
 
 //void Optimized::HandleParam(Argument& arg)
@@ -776,19 +1087,20 @@ void Optimized::HandleReturns(Function& f)
 //	
 //}
 
-GlobalVariable& Optimized::GetReturnGlobal(Function& func)
+GlobalVariable& Optimized::GetReturnGlobal(Type& type)
 {
-	static std::map<Function*, GlobalVariable*> returnShadows;
-	
-	std::map<Function*, GlobalVariable*>::iterator it = returnShadows.find(&func);
-	
+	static std::map<Type*, GlobalVariable*> returnShadows;
+
+	std::map<Type*, GlobalVariable*>::iterator it = returnShadows.find(&type);
+
 	if (it == returnShadows.end())
 	{
-		GlobalVariable* returnShadow = new GlobalVariable(*module, func.getReturnType(), false, GlobalValue::CommonLinkage, &GetNullValue(*func.getReturnType()), "");
-		returnShadows.insert(std::pair<Function*, GlobalVariable*>(&func, returnShadow));
+		GlobalVariable* returnShadow = new GlobalVariable(*module, ConvertType(&type), false, GlobalVariable::CommonLinkage, &GetNullValue(*ConvertType(&type)), "");
+		db("Created global variable: " << *returnShadow)
+		returnShadows.insert(std::pair<Type*, GlobalVariable*>(&type, returnShadow));
 		return *returnShadow;
 	}
-	
+
 	return *it->second;
 }
 
@@ -814,6 +1126,7 @@ GlobalVariable& Optimized::GetReturnGlobal(Function& func)
 
 void Optimized::AddShadow(Value& value, Value& shadow)
 {
+	//	db("********************Instrumenting " << value << " resulted in " << shadow)
 	valueToShadow.insert(std::pair<Value*, Value*>(&value, &shadow));
 }
 
@@ -821,80 +1134,82 @@ Value& Optimized::GetShadow(Value& value)
 {
 	//TODO: I'm adding to valueToShadow in Instrument. Whether this is a good idea remains to be seen
 	std::map<Value*, Value*>::iterator it = valueToShadow.find(&value);
-	
+
 	if (it != valueToShadow.end()) return *it->second;
-	
+
 	if (! MayBePointer(value))
 	{
 		return GetNullValue(*value.getType());
 	}
-	
+
 	Value& shadow = Instrument(value);
 	return shadow;
-	
-//	GlobalVariable* gv = dyn_cast<GlobalVariable>(&value);
-//
-//	if (gv)
-//	{
-//		return GetAllOnesValue(*gv->getType());
-//	}
-//
-//	Constant* constant = dyn_cast<Constant>(&value);
-//
-//	if (constant)
-//	{
-//		return GetNullValue(*constant->getType());
-//	}
-//	
-//	Argument* argument = dyn_cast<Argument>(&value);
-//	
-//	if (argument && argument->getParent()->getName().equals("main"))
-//	{
-//		if (argument->getType()->getScalarSizeInBits() == 32)
-//		{
-//			return GetInt(32,0);
-//		}
-//		else
-//		{
-//			return GetAllOnesValue(*argument->getType());
-//		}
-//	}
-//	
-//	std::map<Value*, Value*>::iterator it = valueToShadow.find(&value);
-//	
-//	if (it != valueToShadow.end())
-//	{
-//		return *it->second;
-//	}
-//	
-//	Instruction* instruction = dyn_cast<Instruction>(&value);
-//	
-//	if (instruction)
-//	{
-//		Value* shadow = Instrument(*instruction);
-//		assert(shadow != 0);
-//		return *shadow;
-//	}
-//	
-//	assert(0);
-//	return value; //@todo remove this
+
+	//	GlobalVariable* gv = dyn_cast<GlobalVariable>(&value);
+	//
+	//	if (gv)
+	//	{
+	//		return GetAllOnesValue(*gv->getType());
+	//	}
+	//
+	//	Constant* constant = dyn_cast<Constant>(&value);
+	//
+	//	if (constant)
+	//	{
+	//		return GetNullValue(*constant->getType());
+	//	}
+	//	
+	//	Argument* argument = dyn_cast<Argument>(&value);
+	//	
+	//	if (argument && argument->getParent()->getName().equals("main"))
+	//	{
+	//		if (argument->getType()->getScalarSizeInBits() == 32)
+	//		{
+	//			return GetInt(32,0);
+	//		}
+	//		else
+	//		{
+	//			return GetAllOnesValue(*argument->getType());
+	//		}
+	//	}
+	//	
+	//	std::map<Value*, Value*>::iterator it = valueToShadow.find(&value);
+	//	
+	//	if (it != valueToShadow.end())
+	//	{
+	//		return *it->second;
+	//	}
+	//	
+	//	Instruction* instruction = dyn_cast<Instruction>(&value);
+	//	
+	//	if (instruction)
+	//	{
+	//		Value* shadow = Instrument(*instruction);
+	//		assert(shadow != 0);
+	//		return *shadow;
+	//	}
+	//	
+	//	assert(0);
+	//	return value; //@todo remove this
 }
 
 Value& Optimized::CreateTranslateCall(Value& pointer, Instruction& before)
 {
-	
+
 	Function& translateFunction = GetTranslateFunction();
-	
+
 	//first I must bitcast pointer to i8* since the translate function expects a i8* 
 	BitCastInst* toi8p = new BitCastInst(&pointer, Type::getInt8PtrTy(*context), "", &before);
-	
+	assert(targetData->getTypeSizeInBits(Type::getInt8PtrTy(*context)) == targetData->getTypeSizeInBits(pointer.getType()));
+
 	std::vector<Value*> args;
 	args.push_back(toi8p);
 	CallInst* call = CallInst::Create(&translateFunction, args, "", &before);
-	
-	BitCastInst* fromi8p = new BitCastInst(call, pointer.getType(), "", &before);
-	
-	
+
+	Type* t = Type::getIntNPtrTy(*context, targetData->getTypeSizeInBits(cast<PointerType>(pointer.getType())->getElementType()));
+	BitCastInst* fromi8p = new BitCastInst(call, t, "", &before);
+
+
 	return *fromi8p;
 }
 
@@ -1271,14 +1586,14 @@ Function& Optimized::GetMemsetFunction(int bitSize)
 {
 	//@todo I'm assuming that the length needs at most 32 bits
 	static std::map<int, Function*> memsetMap;
-	
+
 	std::map<int, Function*>::iterator it = memsetMap.find(bitSize);
-	
+
 	if (it != memsetMap.end())
 	{
 		return *it->second;
 	}
-	
+
 	/*
 	 * i8* <dest>, i8 <val>, i32 <len>, i32 <align>, i1 <isvolatile>
 	 */
@@ -1288,8 +1603,8 @@ Function& Optimized::GetMemsetFunction(int bitSize)
 	params.push_back(Type::getIntNTy(*context, bitSize));
 	params.push_back(Type::getInt32Ty(*context));
 	params.push_back(Type::getInt1Ty(*context));
-	
-	
+
+
 	std::stringstream memsetName;
 	memsetName << "llvm.memset.p0i8.i" << bitSize;
 	Function* memset = Function::Create(FunctionType::get(Type::getVoidTy(*context), params, false), GlobalValue::ExternalLinkage, memsetName.str(), module);
@@ -1303,7 +1618,7 @@ void Optimized::InstrumentDelayedPHINodes()
 	{
 		PHINode& original = *it->first;
 		PHINode& phiShadow = *it->second;
-		
+
 		PHINode::block_iterator blockIt = original.block_begin(), blockItEnd = original.block_end();
 		for (PHINode::op_iterator it = original.op_begin(), itEnd = original.op_end(); it != itEnd; ++it)
 		{
@@ -1311,23 +1626,23 @@ void Optimized::InstrumentDelayedPHINodes()
 			phiShadow.addIncoming(&shadow, *blockIt);
 			++blockIt;
 		}
-		
+
 	}
-	
-//	for (std::map<PHINode*, PHINode*>::iterator it = delayedPHIShadowMemoryNodes.begin(), itEnd = delayedPHIShadowMemoryNodes.end(); it != itEnd; ++it)
-//	{
-//		PHINode& original = *it->first;
-//		PHINode& phiShadow = *it->second;
-//
-//		PHINode::block_iterator blockIt = original.block_begin(), blockItEnd = original.block_end();
-//		for (PHINode::op_iterator it = original.op_begin(), itEnd = original.op_end(); it != itEnd; ++it)
-//		{
-//			Value& shadow = GetShadowMemory(**it);
-//			phiShadow.addIncoming(&shadow, *blockIt);
-//			++blockIt;
-//		}
-//
-//	}
+
+	//	for (std::map<PHINode*, PHINode*>::iterator it = delayedPHIShadowMemoryNodes.begin(), itEnd = delayedPHIShadowMemoryNodes.end(); it != itEnd; ++it)
+	//	{
+	//		PHINode& original = *it->first;
+	//		PHINode& phiShadow = *it->second;
+	//
+	//		PHINode::block_iterator blockIt = original.block_begin(), blockItEnd = original.block_end();
+	//		for (PHINode::op_iterator it = original.op_begin(), itEnd = original.op_end(); it != itEnd; ++it)
+	//		{
+	//			Value& shadow = GetShadowMemory(**it);
+	//			phiShadow.addIncoming(&shadow, *blockIt);
+	//			++blockIt;
+	//		}
+	//
+	//	}
 }
 
 //void Optimized::CreateAndInsertFillMemoryCode(Value& ptr, Value& numBytes, Value& value, Instruction& insertBefore)
@@ -1345,102 +1660,108 @@ void Optimized::InstrumentDelayedPHINodes()
 ////	MarkAsNotOriginal(*call);
 //}
 
-void Optimized::HandleParamPassingTo(Function& f, int argno, GlobalVariable* gv)
+void Optimized::HandleParamPassingTo(Function& f, int argno, Value* paramGV)
 {
 	for (Value::use_iterator it = f.use_begin()	, itEnd = f.use_end(); it != itEnd; it++)
 	{
 		//TODO: remember to handle invoke as well
-		CallInst* call = dyn_cast<CallInst>(*it);
 
-		if (! call)
-		{
-			assert(0 && "Forgot to test something");
-		}
+		if (dyn_cast<CallInst>(*it) == 0 && dyn_cast<InvokeInst>(*it) == 0) continue; 
 
-		CallSite cs(call);
+		//		if (! call)
+		//		{
+
+		//			assert(0 && "Forgot to test something");
+		//		}
+
+		CallSite cs(*it);
 		Value* arg = cs.getArgument(argno);
 		Value& shadow = GetShadow(*arg);
-		StoreInst* store = new StoreInst(&shadow, gv, cs.getInstruction()); //TODO: memory leak?
-		
+
+
+
+		BitCastInst* cast = new BitCastInst(paramGV, ConvertType(arg->getType())->getPointerTo(), "", cs.getInstruction());
+		StoreInst* store = new StoreInst(&shadow, cast, cs.getInstruction()); //TODO: memory leak?
+
 	}
-	
-	
-//	static std::set<Function*> alreadyHandled;
-//	
-//	std::set<Function*>::iterator it = alreadyHandled.find(&f);
-//	
-//	if (it != alreadyHandled.end()) return;
-//	
-//	//TODO: remember varargs, invoke
-//	std::vector<GlobalVariable*> globals;
-//	
-//	Function::ArgumentListType& paramList = f.getArgumentList();
-//	
-//	for (Function::ArgumentListType::iterator it = paramList.begin(), itEnd = paramList.end(); it != itEnd; it++)
-//	{
-//		bool p = MayBePointer(*it);
-//		
-//		if (p)
-//		{
-//			GlobalVariable& gv = GetParamGlobal(*it);
-//			globals.push_back(&gv);
-//		}
-//		else
-//		{
-//			globals.push_back(0);
-//		}
-//	}
-//	
-//	for (Value::use_iterator it = f.use_begin()	, itEnd = f.use_end(); it != itEnd; it++)
-//	{
-//		//TODO: remember to handle invoke as well
-//		CallInst* call = dyn_cast<CallInst>(*it);
-//
-//		if (! call)
-//		{
-//			assert(0 && "Forgot to test something");
-//		}
-//
-//		CallSite cs(call);
-//		std::vector<GlobalVariable*>::iterator globalsIt = globals.begin();
-//		
-//		for (CallSite::arg_iterator it = cs.arg_begin(), itEnd = cs.arg_end(); it != itEnd; it++)
-//		{
-//			if (*globalsIt != 0)
-//			{
-//				new StoreInst(*it, *globalsIt, cs.getInstruction()); //TODO: memory leak?
-//			}
-//			
-//			globalsIt++;
-//		}
-//
-//	}
-//
-//	alreadyHandled.insert(&f);
+
+
+	//	static std::set<Function*> alreadyHandled;
+	//	
+	//	std::set<Function*>::iterator it = alreadyHandled.find(&f);
+	//	
+	//	if (it != alreadyHandled.end()) return;
+	//	
+	//	//TODO: remember varargs, invoke
+	//	std::vector<GlobalVariable*> globals;
+	//	
+	//	Function::ArgumentListType& paramList = f.getArgumentList();
+	//	
+	//	for (Function::ArgumentListType::iterator it = paramList.begin(), itEnd = paramList.end(); it != itEnd; it++)
+	//	{
+	//		bool p = MayBePointer(*it);
+	//		
+	//		if (p)
+	//		{
+	//			GlobalVariable& gv = GetParamGlobal(*it);
+	//			globals.push_back(&gv);
+	//		}
+	//		else
+	//		{
+	//			globals.push_back(0);
+	//		}
+	//	}
+	//	
+	//	for (Value::use_iterator it = f.use_begin()	, itEnd = f.use_end(); it != itEnd; it++)
+	//	{
+	//		//TODO: remember to handle invoke as well
+	//		CallInst* call = dyn_cast<CallInst>(*it);
+	//
+	//		if (! call)
+	//		{
+	//			assert(0 && "Forgot to test something");
+	//		}
+	//
+	//		CallSite cs(call);
+	//		std::vector<GlobalVariable*>::iterator globalsIt = globals.begin();
+	//		
+	//		for (CallSite::arg_iterator it = cs.arg_begin(), itEnd = cs.arg_end(); it != itEnd; it++)
+	//		{
+	//			if (*globalsIt != 0)
+	//			{
+	//				new StoreInst(*it, *globalsIt, cs.getInstruction()); //TODO: memory leak?
+	//			}
+	//			
+	//			globalsIt++;
+	//		}
+	//
+	//	}
+	//
+	//	alreadyHandled.insert(&f);
 }
 
 
 Value* Optimized::HandleExternFunctionCall(CallSite& cs)
 {
 	Function& func = *cs.getCalledFunction();
-	
-//	if (func.getName().equals("printf"))
-//	{
-//		return HandlePrintfCall(cs);
-//	}
-//	if (func.getName().equals("malloc"))
-//	{
-//		return HandleMallocCall(cs);
-//	}
 
-	
-	
+	//	if (func.getName().equals("printf"))
+	//	{
+	//		return HandlePrintfCall(cs);
+	//	}
+	//	if (func.getName().equals("malloc"))
+	//	{
+	//		return HandleMallocCall(cs);
+	//	}
+
+
+
 	Type* retType = func.getReturnType();
 	int size = targetData->getTypeSizeInBits(retType);
 	assert(size != 0);
 
 	if (retType->isVoidTy()) return 0; 
-	
+
 	if (retType->isPointerTy())
 	{
 		Constant& c = GetAllOnesValue(*retType);
@@ -1548,6 +1869,7 @@ void Optimized::MarkAsInstrumented(Value& v)
 
 bool Optimized::MayBePointer(Value& v)
 {
+	if (dumb) return true;
 	std::set<Value*>::iterator it = leakedValues.find(&v);
 	return it != leakedValues.end();
 }

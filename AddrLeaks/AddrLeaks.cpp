@@ -121,7 +121,7 @@ namespace {
         void printInt2ValueTable();
         void handleAlloca(Instruction *I); 
         void handleNestedStructs(const Type *StTy, int parent);
-        std::set<Value*> getLeakedValues();
+        public: std::set<Value*> getLeakedValues();
     };
 }
 
