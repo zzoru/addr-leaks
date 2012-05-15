@@ -32,6 +32,28 @@ void* translate(void* addr)
 	}
 }
 
+void myAbort()
+{
+	printf("An address was leaked\n");
+	exit(-1);
+}
+
+void assertString(char* str)
+{
+	char* shadowStr = translate(str);
+	
+	while (*str != 0)
+	{
+		if (*shadowStr)
+		{
+			myAbort();
+		}
+		
+		str++;
+		shadowStr++;
+	}
+}
+
 
 //void* createArgvShadow(int argc, void** argv) //@todo Need to discover how to make it i32 rather than int (there are other solutions of course)
 //{
