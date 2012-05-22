@@ -72,6 +72,12 @@ bool Optimized::runOnModule(Module& module)
  * PRIVATE METHODS IMPLEMENTATION
  *********************************************************************************************************************************************************************************/
 
+/*
+  This function implements the data transfer between function calls.
+  The straighforward way of doing it would be to insert new parameters
+  into each function declaration. However, passing data to functions
+  through global variables is an easier alternative.
+ */
 GlobalVariable& Optimized::GetParamGlobal(Argument& param)
 {
 	static std::map<unsigned, GlobalVariable*> gvs;
@@ -103,6 +109,9 @@ GlobalVariable& Optimized::GetParamGlobal(Argument& param)
 
 }
 
+/*
+  Convert data-structures to iX types.
+ */
 Type* Optimized::ConvertType(Type* type)
 {
 	return Type::getIntNTy(*context, targetData->getTypeSizeInBits(type));
@@ -127,6 +136,10 @@ Type* Optimized::ConvertType(Type* type)
 //	}
 //}
 
+/*
+  AssertString is a function that checks if every character that makes up
+  a string is tainted or clean. This function is defined externally.
+ */
 Function& Optimized::GetAssertStringFunction()
 {
 	static Function* func = 0;
@@ -139,10 +152,17 @@ Function& Optimized::GetAssertStringFunction()
 	return *func;
 }
 
+/*
+  This function inserts the abort code into the instrumented program. so far
+  we are only checking if a printf can leak address. Thus, this function 
+  goes over the string format argument of the printf function, and for each
+  data that can be printed, it checks instruments this data. If the data
+  might contain an address, then this function inserts an exit code there.
+ */
 void Optimized::HandlePrintf(CallSite* cs)
 {
 	db("Handling printf")
-																	CallSite::arg_iterator AI = cs->arg_begin();
+	CallSite::arg_iterator AI = cs->arg_begin();
 
 	std::vector<bool> vaza, isString;
 	Value *fmt = *AI;
@@ -309,6 +329,14 @@ void Optimized::HandlePrintf(CallSite* cs)
 
 }
 
+/*
+  This function inserts the instrumented code. It does basically two things.
+  First, it inserts instrumentation into the program to store in the shadow
+  environment the abstract state of the variable defined by the instruction.
+  Second, it goes over the def-use chain
+  of variable v, and instruments each sink function that uses v.
+  TODO: fix else code.
+ */
 void Optimized::HandleUses(Value& v)
 {
 	Value& shadow = GetShadow(v);
@@ -374,6 +402,14 @@ void Optimized::HandleUses(Value& v)
 	}
 }
 
+/*
+  This function instruments the code that will always require some
+  instrumentation. There are functions that might be instrumented or
+  not, depending on the result of the static analysis. However, there
+  are also functions that must compulsorily be instrumented. Examples include
+  stores and some libc functions, such as memcpy.
+  TODO: move store code from handleUses to this place
+ */
 void Optimized::HandleSpecialFunctions()
 {
 	for (Module::iterator fIt = module->begin(), fItEnd = module->end(); fIt != fItEnd; ++fIt) {
@@ -389,6 +425,13 @@ void Optimized::HandleSpecialFunctions()
 	}
 }
 
+/*
+  Inserts the instrumentation required by the memcpy function. This function
+  always require instrumentation, because the C's semantics allows us to
+  read an array outside its bounds. Thus, when facing this function we
+  insert instrumentation that copies the abstract state from the source array's
+  shadow into the target array's shadow.
+ */
 void Optimized::HandleMemcpy(MemCpyInst& i)
 {
 	Function* f = i.getCalledFunction();
@@ -405,6 +448,11 @@ void Optimized::HandleMemcpy(MemCpyInst& i)
 	CallInst* c = CallInst::Create(f, args, "", &i);
 }
 
+/*
+  Starts the instrumentation framework, getting references to the required
+  analysis, and allocating space for the data structures. This function is
+  called immediately once runOnModule starts running.
+ */
 //TODO: Look whether while loops (anything that depends on itself would work) would break this
 //TODO: Remember to test null pointers
 void Optimized::Setup(Module& module)
@@ -442,12 +490,19 @@ void Optimized::Setup(Module& module)
 	//	}
 }
 
+/*
+  This function converts an ordinary instruction into an instrumented
+  instruction. This function is called over every instruction that
+  must be instrumented. If we use the static analysis, some instructions will
+  be deemd clear of tainted information. These instructions will not be given
+  to the Instrument function.
+ */
 Value& Optimized::Instrument(Value& value)
 {
 	db("Instrumenting " << value)
 																											//	MarkAsInstrumented(value);
 
-																											Value* shadow;
+	Value* shadow;
 
 	Instruction* i;
 	GlobalVariable* gv;
@@ -456,6 +511,7 @@ Value& Optimized::Instrument(Value& value)
 
 	i = dyn_cast<Instruction>(&value);
 
+    // TODO: check if you can use an else here, to eliminate the gotos.
 	if (i)
 	{
 
@@ -572,6 +628,9 @@ Value& Optimized::Instrument(Value& value)
 	return *shadow;
 }
 
+/*
+  Specific function to instrument the different types of instructions.
+ */
 Value& Optimized::Instrument(Instruction& instruction)
 {	
 
@@ -966,6 +1025,11 @@ Value& Optimized::Instrument(Instruction& instruction)
 	return *newShadow;
 }
 
+/*
+  This function returns an external function that is inserted into the
+  instrumented code. This function checks if the abstract state of a shadow
+  value is tainted or clean. If that state is tainted, it aborts the program.
+ */
 Function& Optimized::GetAssertZeroFunction()
 {
 	static Function* assertZero = 0;
@@ -1003,6 +1067,10 @@ Function& Optimized::GetAssertZeroFunction()
 	return GetAssertZeroFunction();
 }
 
+/*
+  This function returns an external function that maps program variables to
+  shadow values.
+ */
 Function& Optimized::GetTranslateFunction()
 {
 	static Function* func = 0;
@@ -1049,6 +1117,12 @@ bool Optimized::HasBody(Function& f)
 	return f.getBasicBlockList().size() != 0;
 }
 
+/*
+  This function inserts code to instrument return instructions. This
+  instrumentation consists in writing into global variables the abstract
+  state of the return value. If at least one return demands instrumentation,
+  all the other returns will be instrumented.
+ */
 void Optimized::HandleReturns(Function& f)
 {
 	//TODO: remember to handle things like invoke vs call
@@ -1087,6 +1161,14 @@ void Optimized::HandleReturns(Function& f)
 //	
 //}
 
+/*
+  The abstract state of each function (its return value) is stored into a
+  global variable. This function returns this global variable. There exists
+  only one global value for each possible data type. So, many functions might
+  shared the same global shadow storage for return values. However, this
+  global storage has a very short life time, because it is only used to
+  transport values from one function to another.
+ */
 GlobalVariable& Optimized::GetReturnGlobal(Type& type)
 {
 	static std::map<Type*, GlobalVariable*> returnShadows;
@@ -1193,6 +1275,10 @@ Value& Optimized::GetShadow(Value& value)
 	//	return value; //@todo remove this
 }
 
+/*
+  This function inserts the call to the translate external function into the
+  instrumented program.
+ */
 Value& Optimized::CreateTranslateCall(Value& pointer, Instruction& before)
 {
 
@@ -1582,6 +1668,7 @@ Value& Optimized::CreateTranslateCall(Value& pointer, Instruction& before)
 //	
 //}
 
+// TODO: check if you can remove this function from the code.
 Function& Optimized::GetMemsetFunction(int bitSize)
 {
 	//@todo I'm assuming that the length needs at most 32 bits
@@ -1612,6 +1699,12 @@ Function& Optimized::GetMemsetFunction(int bitSize)
 	return *memset;
 }
 
+/*
+  This function handles the instrumentation of phi nodes. When we are
+  instrumenting a phi-function, it is possible that some of its
+  parameters have not been visited yet. If we called the handleUses
+  on these parameters, we could enter an infinite loop.
+ */
 void Optimized::InstrumentDelayedPHINodes()
 {
 	for (std::map<PHINode*, PHINode*>::iterator it = delayedPHINodes.begin(), itEnd = delayedPHINodes.end(); it != itEnd; ++it)
@@ -1660,6 +1753,11 @@ void Optimized::InstrumentDelayedPHINodes()
 ////	MarkAsNotOriginal(*call);
 //}
 
+/*
+  This function inserts instrumentation to copy the abstract values of actual
+  parameters to formal parameters. The global variables are used to perform
+  this data copy.
+ */
 void Optimized::HandleParamPassingTo(Function& f, int argno, Value* paramGV)
 {
 	for (Value::use_iterator it = f.use_begin()	, itEnd = f.use_end(); it != itEnd; it++)
@@ -1740,7 +1838,16 @@ void Optimized::HandleParamPassingTo(Function& f, int argno, Value* paramGV)
 	//	alreadyHandled.insert(&f);
 }
 
-
+/*
+  This function instruments calls to functions from external libraries.
+  We are dealing with this function in a simplified way: if the function
+  returns a pointer, we consider it to be tainted. Otherwise, we consider
+  it clean. We ignore the parameters.
+  TODO: this function breaks the correctness of our framework, in the
+  sense that it is not conservative. We are still allowing the flow of
+  information through integers, for instance. A more definitive solution
+  would involve instrumenting in particular way every external function.
+ */
 Value* Optimized::HandleExternFunctionCall(CallSite& cs)
 {
 	Function& func = *cs.getCalledFunction();
@@ -1830,6 +1937,7 @@ Value* Optimized::HandleExternFunctionCall(CallSite& cs)
 ////	return mallocShadow;
 //}
 
+// TODO: check if we can remove this code.
 Instruction* Optimized::GetNextInstruction(Instruction& i)
 {
 	//TODO: This may not make sense since a instruction might have more than one sucessor or be the last instruction
@@ -1838,6 +1946,7 @@ Instruction* Optimized::GetNextInstruction(Instruction& i)
 	return it;
 }
 
+// TODO: check if we can remove this code.
 Function& Optimized::GetCreateArgvShadowFunction()
 {
 	static Function* func = 0;
@@ -1867,6 +1976,10 @@ void Optimized::MarkAsInstrumented(Value& v)
 	instrumented.insert(&v);
 }
 
+/*
+  This function decides which values need to be instrumented, and which
+  do not.
+ */
 bool Optimized::MayBePointer(Value& v)
 {
 	if (dumb) return true;
