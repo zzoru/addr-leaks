@@ -24,8 +24,10 @@ Optimized::Optimized() : ModulePass(ID)
 
 bool Optimized::runOnModule(Module& module)
 {
-	db("*********************************\nIn my pass*********************************")
-																													dumb = IsDumb;
+	//	assert(false);
+	db("*********************************\nIn my pass*********************************");
+	dumb = IsDumb;
+
 	Setup(module);
 	HandleSpecialFunctions();
 
@@ -80,41 +82,60 @@ bool Optimized::runOnModule(Module& module)
  */
 GlobalVariable& Optimized::GetParamGlobal(Argument& param)
 {
-	static std::map<unsigned, GlobalVariable*> gvs;
+	static std::map<Argument*, GlobalVariable*> gvs;
 
-	unsigned argNo = param.getArgNo();
+	//	unsigned argNo = param.getArgNo();
 
-	std::map<unsigned, GlobalVariable*>::iterator it = gvs.find(argNo);
+	std::map<Argument*, GlobalVariable*>::iterator it = gvs.find(&param);
 
 	if (it != gvs.end()) 
 	{
+		return *it->second;
 		GlobalVariable* gv = it->second;
-		Type* oldType = gv->getType()->getElementType();
-		int oldSize = targetData->getTypeSizeInBits(oldType);
-		Type* newType = param.getType();
-		int newSize = targetData->getTypeSizeInBits(newType);
-		if (newSize > oldSize)
-		{
-			gv->mutateType(Type::getIntNPtrTy(*context, newSize)); //TODO: this is dangerous/not sure if the right choice
-			gv->setInitializer(&GetNullValue(*Type::getIntNTy(*context, newSize)));
-		}
+
+		//		Type* oldType = gv->getType()->getElementType();
+		//		int oldSize = GetSize(*oldType);
+		//		Type* newType = param.getType();
+		//		int newSize = GetSize(*newType);
+		//		if (newSize > oldSize)
+		//		{
+		//			gv->mutateType(Type::getIntNPtrTy(*context, newSize)); //TODO: this is dangerous/not sure if the right choice
+		//			gv->setInitializer(&GetNullValue(*Type::getIntNTy(*context, newSize)));
+		//		}
+
 
 		return *gv;
 	}
 
 	GlobalVariable* gv= new GlobalVariable(*module, ConvertType(param.getType()), false, GlobalVariable::CommonLinkage, &GetNullValue(*ConvertType(param.getType())), "");
 	db("Created global variable: " << *gv);
-	gvs.insert(std::pair<unsigned, GlobalVariable*>(argNo, gv));
+	gvs.insert(std::pair<Argument*, GlobalVariable*>(&param, gv));
 	return *gv;
 
 }
 
+
 /*
   Convert data-structures to iX types.
  */
+
+unsigned Optimized::GetSize(Type& type)
+{
+	if (type.getPrimitiveSizeInBits() != 0)
+	{
+		return type.getPrimitiveSizeInBits();
+	}
+	else
+	{
+		return targetData->getPointerSize();
+	}	
+}
+
+
 Type* Optimized::ConvertType(Type* type)
 {
-	return Type::getIntNTy(*context, targetData->getTypeSizeInBits(type));
+	return type; //TODO: This is done only for motives of testing.
+	//	return Type::getIntNTy(*context, GetSize(*type));
 }
 
 //void Optimized::HandleStores(Value& v)
@@ -162,6 +183,7 @@ Function& Optimized::GetAssertStringFunction()
 void Optimized::HandlePrintf(CallSite* cs)
 {
 	db("Handling printf")
+
 	CallSite::arg_iterator AI = cs->arg_begin();
 
 	std::vector<bool> vaza, isString;
@@ -299,13 +321,8 @@ void Optimized::HandlePrintf(CallSite* cs)
 			{
 
 				Value* arg = cs->getArgument(i + 1);
-				if (targetData->getTypeSizeInBits(arg->getType()) != targetData->getTypeSizeInBits(Type::getInt8PtrTy(*context)))
-				{
-					db("Strange printf: " << *cs->getInstruction());
-				}
-				assert(targetData->getTypeSizeInBits(arg->getType()) == targetData->getTypeSizeInBits(Type::getInt8PtrTy(*context)));
+
 				BitCastInst* cast = new BitCastInst(arg, Type::getInt8PtrTy(*context), "", cs->getInstruction());
-				assert(targetData->getTypeSizeInBits(Type::getInt8PtrTy(*context)) == targetData->getTypeSizeInBits(arg->getType()));
 				Function& assertStringFunction = GetAssertStringFunction();
 				std::vector<Value*> args;
 				args.push_back(cast);
@@ -384,21 +401,22 @@ void Optimized::HandleUses(Value& v)
 			//				new CallInst(&f, )
 			//			}
 		}
-		else 
-		{
-			//TODO: there may be more instructions that stores in memory
-			StoreInst* store = dyn_cast<StoreInst>(*it);
-			if (store)
-			{
-
-				if (store->getValueOperand() == &v)
-				{
-					Value& shadowPtr = CreateTranslateCall(*store->getPointerOperand(), *store);
-
-					StoreInst* x = new StoreInst(&shadow, &shadowPtr, store); //TODO: memory leak?
-				}
-			}
-		}
+		//		else 
+		//		{
+		//			//TODO: there may be more instructions that stores in memory
+		//			//TODO: this is wrong since it assumes that I just need to instrument stores that may be corrupted
+		//			StoreInst* store = dyn_cast<StoreInst>(*it);
+		//			if (store)
+		//			{
+		//
+		//				if (store->getValueOperand() == &v)
+		//				{
+		//					Value& shadowPtr = CreateTranslateCall(*store->getPointerOperand(), *store);
+		//
+		//					StoreInst* x = new StoreInst(&shadow, &shadowPtr, store); //TODO: memory leak?
+		//				}
+		//			}
+		//		}
 	}
 }
 
@@ -416,10 +434,21 @@ void Optimized::HandleSpecialFunctions()
 		if (! fIt->isDeclaration()) {
 			for (inst_iterator it = inst_begin(fIt), itEnd = inst_end(fIt); it != itEnd; ++it)
 			{
-				MemCpyInst* mcy = dyn_cast<MemCpyInst>(&*it);
-				if (mcy) {
+				MemCpyInst* mcy; 
+				StoreInst* store;
+
+				if (mcy = dyn_cast<MemCpyInst>(&*it)) 
+				{
 					HandleMemcpy(*mcy);
-				}
+				} 
+				//TODO: remove comments below (it's valid code)
+//				else if (store = dyn_cast<StoreInst>(&*it)) 
+//				{
+//					Value& shadowPtr = CreateTranslateCall(*store->getPointerOperand(), *store);
+//					Value& shadow = GetShadow(*store->getValueOperand());
+//					StoreInst* x = new StoreInst(&shadow, &shadowPtr, store); //TODO: memory leak?
+//
+//				}
 			}
 		}
 	}
@@ -499,8 +528,8 @@ void Optimized::Setup(Module& module)
  */
 Value& Optimized::Instrument(Value& value)
 {
-	db("Instrumenting " << value)
-																											//	MarkAsInstrumented(value);
+	//	MarkAsInstrumented(value);
+
 
 	Value* shadow;
 
@@ -511,7 +540,7 @@ Value& Optimized::Instrument(Value& value)
 
 	i = dyn_cast<Instruction>(&value);
 
-    // TODO: check if you can use an else here, to eliminate the gotos.
+	// TODO: check if you can use an else here, to eliminate the gotos.
 	if (i)
 	{
 
@@ -543,8 +572,7 @@ Value& Optimized::Instrument(Value& value)
 		Instruction* firstInstruction = b.getFirstNonPHI();
 
 		BitCastInst* cast = new BitCastInst(&paramGV, ConvertType(param->getType())->getPointerTo(), "", firstInstruction); //TODO: not sure if I need to specify the address space
-		db("cast=" << *cast)
-		assert(targetData->getTypeSizeInBits(ConvertType(param->getType())->getPointerTo()) == targetData->getTypeSizeInBits(paramGV.getType()));
+
 
 		shadow = new LoadInst(cast, "", firstInstruction);
 		db("shadow=" << *shadow)
@@ -625,6 +653,9 @@ Value& Optimized::Instrument(Value& value)
 
 	MarkAsInstrumented(value);
 	MarkAsInstrumented(*shadow);
+
+//	db("Instrumenting " << value << " into " << *shadow);
+
 	return *shadow;
 }
 
@@ -642,26 +673,38 @@ Value& Optimized::Instrument(Instruction& instruction)
 
 		BinaryOperator& bin = cast<BinaryOperator>(instruction);
 		Value& op1 = *bin.getOperand(0);
-
 		Value& op2 = *bin.getOperand(1);
 
-		Value& shadow1 = GetShadow(op1);
+		Value* shadow1 = &GetShadow(op1);
+		Value* shadow2 = &GetShadow(op2);
+		
+		if (shadow1->getType()->isFPOrFPVectorTy()) 
+		{
+			assert(shadow2->getType()->isFPOrFPVectorTy());
+			Type* oldType = shadow1->getType();
+			Type* newType = Type::getIntNTy(*context, GetSize(*shadow1->getType()));
+			Value* convertedShadow1 = new FPToUIInst(shadow1, newType, "", &instruction);
+			Value* convertedShadow2 = new FPToUIInst(shadow2, newType, "", &instruction);
+			Value* orOp = BinaryOperator::Create(Instruction::Or, convertedShadow1, convertedShadow2, "", &instruction);
+			newShadow = new BitCastInst(orOp, oldType, "", &instruction);
+		}
+		else
+		{
+			newShadow = BinaryOperator::Create(Instruction::Or, shadow1, shadow2, "", &instruction);
+		}
 
-		Value& shadow2 = GetShadow(op2);
-
-		newShadow = BinaryOperator::Create(Instruction::Or, &shadow1, &shadow2, "", &instruction);
 
 		return *newShadow;
 	}
 
 	switch (instruction.getOpcode())
 	{
-	case Instruction::LandingPad:
-	{
-		LandingPadInst& lpad = cast<LandingPadInst>(instruction);
-		lpad.inser
-		break;
-	}
+	//	case Instruction::LandingPad:
+	//	{
+	//		LandingPadInst& lpad = cast<LandingPadInst>(instruction);
+	//		lpad.inser
+	//		break;
+	//	}
 	//TODO: Handle vector operations
 	//		case Instruction::Ret:
 	//		{
@@ -687,8 +730,14 @@ Value& Optimized::Instrument(Instruction& instruction)
 		Value* agg = extract.getAggregateOperand();
 		Value& shadow = GetShadow(*agg);
 		BitCastInst* toAgg = new BitCastInst(&shadow, agg->getType(), "", &instruction);
+		db("Converting from " << *shadow.getType() << " to " << *agg->getType());
+
+		//		targetData->getTypeAllocSize()
+
+
 		ExtractValueInst* shadowAgg = ExtractValueInst::Create(toAgg, extract.getIndices(), "", &instruction);
 		newShadow = new BitCastInst(shadowAgg, ConvertType(shadowAgg->getType()), "", &instruction);
+
 		break;
 	}
 	//		case Instruction::InsertValue: //@todo Remember to test this
@@ -951,24 +1000,27 @@ Value& Optimized::Instrument(Instruction& instruction)
 	case Instruction::SIToFP:   
 	{
 		SIToFPInst& conv = cast<SIToFPInst>(instruction);
-		Type* destType = ConvertType(conv.getDestTy());
-		int destSize = targetData->getTypeSizeInBits(destType);
 		Value& shadow = GetShadow(*conv.getOperand(0));
-		Type* srcType = shadow.getType();
-		int srcSize = targetData->getTypeSizeInBits(srcType);
+		newShadow = new SIToFPInst(&shadow, conv.getDestTy(), "", &instruction);
 
-		if (srcSize > destSize)
-		{
-			newShadow = new TruncInst(&shadow,  destType, "", &instruction); //TODO: this is not the best solution/is ugly/not sure if it works
-		}
-		else if (srcSize == destSize)
-		{
-			newShadow = &shadow;
-		}
-		else
-		{
-			newShadow = new SExtInst(&shadow, destType, "", &instruction); //TODO: this is not the best solution/is ugly/not sure if it works
-		}
+
+
+
+		//		Type* srcType = shadow.getType();
+		//		int srcSize = GetSize(*srcType);
+		//
+		//		if (srcSize > destSize)
+		//		{
+		//			newShadow = new TruncInst(&shadow,  destType, "", &instruction); //TODO: this is not the best solution/is ugly/not sure if it works
+		//		}
+		//		else if (srcSize == destSize)
+		//		{
+		//			newShadow = &shadow;
+		//		}
+		//		else
+		//		{
+		//			newShadow = new SExtInst(&shadow, destType, "", &instruction); //TODO: this is not the best solution/is ugly/not sure if it works
+		//		}
 
 
 		break;
@@ -976,16 +1028,41 @@ Value& Optimized::Instrument(Instruction& instruction)
 	case Instruction::IntToPtr:  
 	{
 		IntToPtrInst& conv = cast<IntToPtrInst>(instruction);
+
 		Value& shadow = GetShadow(*conv.getOperand(0));
-		newShadow = new IntToPtrInst(&shadow, ConvertType(conv.getDestTy()), "", &instruction);
+		newShadow = new IntToPtrInst(&shadow, conv.getDestTy(), "", &instruction);
+		//		IntToPtrInst& conv = cast<IntToPtrInst>(instruction);
+		//		Type* destType = ConvertType(conv.getDestTy());
+		//		int destSize = GetSize(*destType);
+		//		Value& shadow = GetShadow(*conv.getOperand(0));
+		//		Type* srcType = shadow.getType();
+		//		int srcSize = GetSize(*srcType);
+		//
+		//		if (srcSize > destSize)
+		//		{
+		//			newShadow = new TruncInst(&shadow,  destType, "", &instruction); //TODO: this is not the best solution/is ugly/not sure if it works
+		//		}
+		//		else if (srcSize == destSize)
+		//		{
+		//			newShadow = &shadow;
+		//		}
+		//		else
+		//		{
+		//			newShadow = new SExtInst(&shadow, destType, "", &instruction); //TODO: this is not the best solution/is ugly/not sure if it works
+		//		}
+
+
 		break;
 	}
 	case Instruction::PtrToInt: 
 	{
 		PtrToIntInst& conv = cast<PtrToIntInst>(instruction);
-		//		Value& shadow = GetShadow(*conv.getOperand(0));
-		//		newShadow = new PtrToIntInst(&shadow, ConvertType(conv.getDestTy()), "", &instruction);
-		newShadow = &GetShadow(*conv.getOperand(0));
+		Value& shadow = GetShadow(*conv.getOperand(0));
+		newShadow = new PtrToIntInst(&shadow, conv.getDestTy(), "", &instruction);
+		//		PtrToIntInst& conv = cast<PtrToIntInst>(instruction);
+		//		//		Value& shadow = GetShadow(*conv.getOperand(0));
+		//		//		newShadow = new PtrToIntInst(&shadow, ConvertType(conv.getDestTy()), "", &instruction);
+		//		newShadow = &GetShadow(*conv.getOperand(0));
 		break;
 	} 
 	//TODO: va_arg
@@ -1005,7 +1082,7 @@ Value& Optimized::Instrument(Instruction& instruction)
 
 		if (newShadow == 0)
 		{
-			newShadow = &GetNullValue(*Type::getInt32Ty(*context)); //TODO: ugly way to fix the problem of void not having a shadow. fix later
+			newShadow = &GetNullValue(*Type::getInt8Ty(*context)); //TODO: ugly way to fix the problem of void not having a shadow. fix later
 		}
 	}
 
@@ -1101,13 +1178,18 @@ Constant& Optimized::GetInt(int width, int value)
 
 Constant& Optimized::GetAllOnesValue(Type& type)
 {
-	Type* t = Type::getIntNTy(*context, targetData->getTypeSizeInBits(&type));
+//	Type* t = Type::getIntNTy(*context, GetSize(type));
+	Type* t = ConvertType(&type);
+
 	return *Constant::getAllOnesValue(t);
 }
 
 Constant& Optimized::GetNullValue(Type& type)
 {
-	Type* t = Type::getIntNTy(*context, targetData->getTypeSizeInBits(&type));
+
+//	Type* t = Type::getIntNTy(*context, GetSize(type));
+	Type* t = ConvertType(&type);
+
 	return *Constant::getNullValue(t);
 }
 
@@ -1286,14 +1368,15 @@ Value& Optimized::CreateTranslateCall(Value& pointer, Instruction& before)
 
 	//first I must bitcast pointer to i8* since the translate function expects a i8* 
 	BitCastInst* toi8p = new BitCastInst(&pointer, Type::getInt8PtrTy(*context), "", &before);
-	assert(targetData->getTypeSizeInBits(Type::getInt8PtrTy(*context)) == targetData->getTypeSizeInBits(pointer.getType()));
 
 	std::vector<Value*> args;
 	args.push_back(toi8p);
 	CallInst* call = CallInst::Create(&translateFunction, args, "", &before);
 
-	Type* t = Type::getIntNPtrTy(*context, targetData->getTypeSizeInBits(cast<PointerType>(pointer.getType())->getElementType()));
-	BitCastInst* fromi8p = new BitCastInst(call, t, "", &before);
+
+//	Type* t = Type::getIntNPtrTy(*context, GetSize(*cast<PointerType>(pointer.getType())->getElementType()));
+	BitCastInst* fromi8p = new BitCastInst(call, pointer.getType(), "", &before);
+
 
 
 	return *fromi8p;
@@ -1864,7 +1947,7 @@ Value* Optimized::HandleExternFunctionCall(CallSite& cs)
 
 
 	Type* retType = func.getReturnType();
-	int size = targetData->getTypeSizeInBits(retType);
+	int size = GetSize(*retType);
 	assert(size != 0);
 
 	if (retType->isVoidTy()) return 0; 
