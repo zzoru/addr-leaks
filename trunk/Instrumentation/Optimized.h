@@ -36,6 +36,7 @@ public:
 	virtual bool runOnModule(Module&);
 	
 private:
+	unsigned Optimized::GetSize(Type& type);
 	GlobalVariable& GetParamGlobal(Argument& arg);
 	Type* ConvertType(Type*);
 	Function& GetAssertStringFunction();
