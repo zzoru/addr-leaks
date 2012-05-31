@@ -12,7 +12,7 @@ void createShadowMemory()
 {
 	void* result = mmap(MEM_MID - BLOCK_SIZE, 2 * BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, 0, 0); 
 	if (result == MAP_FAILED) {
-		printf("failed. errno=%d\n", errno);
+		printf("Instrumentation MMAP failed. errno=%d\n", errno);
 		exit(-1);
 	}
 }
