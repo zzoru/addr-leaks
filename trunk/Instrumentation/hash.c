@@ -10,7 +10,7 @@
 
 void createShadowMemory()
 {
-	void* result = mmap(MEM_MID - BLOCK_SIZE, 2 * BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, 0, 0); 
+	void* result = mmap(MEM_MID - BLOCK_SIZE, 3 * BLOCK_SIZE, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, 0, 0); 
 	if (result == MAP_FAILED) {
 		printf("Instrumentation MMAP failed. errno=%d\n", errno);
 		exit(-1);
@@ -25,11 +25,16 @@ void* translate(void* addr)
 		long offset = MEM_END -  (long) addr;
 		return MEM_MID - offset;
 	}
-	else
+	else if (addr >= 0x010000000000)
 	{
-		long offset = addr - MEM_BEGIN;
-		return  MEM_MID + offset;
+        long offset = addr - ((long)addr & 0xff0000000000);
+        return MEM_MID + BLOCK_SIZE + offset;
 	}
+    else // 0x00XXXXXXXXXX
+    {
+        long offset = addr;
+		return  MEM_MID + offset;
+    }
 }
 
 void myAbort()
