@@ -127,7 +127,7 @@ unsigned Optimized::GetSize(Type& type)
 	}
 	else
 	{
-		return targetData->getPointerSize();
+		return targetData->getPointerSizeInBits();
 	}	
 }
 
