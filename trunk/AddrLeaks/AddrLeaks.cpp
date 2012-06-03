@@ -90,6 +90,7 @@ namespace {
         std::map<INode, VNodeSet> graphiV;
 
         std::set<Value*> leakedValues;
+        std::vector<std::pair<Instruction*, std::vector<Value*> > > printfLeaks;
         
         std::map<Value*, std::vector<Value*> > phiValues;
         std::map<Value*, std::vector<int> > memoryBlock;
@@ -121,7 +122,9 @@ namespace {
         void printInt2ValueTable();
         void handleAlloca(Instruction *I); 
         void handleNestedStructs(const Type *StTy, int parent);
-        public: std::set<Value*> getLeakedValues();
+      public: 
+        std::set<Value*> getLeakedValues();
+        std::vector<std::pair<Instruction*, std::vector<Value*> > > getPrintfLeaks();
     };
 }
 
@@ -778,6 +781,8 @@ bool AddrLeaks::runOnModule(Module &M) {
 
                     errs() << "=========================================\n";
                     errs() << "\n";
+
+                    printfLeaks.push_back(std::pair<Instruction*, std::vector<Value*> >(use, leaked));
                 }
             }
         }
@@ -797,6 +802,10 @@ bool AddrLeaks::runOnModule(Module &M) {
 
 std::set<Value*> AddrLeaks::getLeakedValues() {
     return leakedValues;
+}
+
+std::vector<std::pair<Instruction*, std::vector<Value*> > > AddrLeaks::getPrintfLeaks() {
+    return printfLeaks;
 }
 
 void AddrLeaks::setFunction(Function &F, Value *v) {
