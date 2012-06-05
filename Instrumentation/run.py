@@ -35,7 +35,7 @@ for filename in files:
     instrumentation = True
     runtime = True
 
-    if result.find('Finished instrumentation') != -1:
+    if p.returncode != 0:
         instrumentation = False
         runtime = False
 
@@ -46,7 +46,6 @@ for filename in files:
                              shell=False, stdin=None, stdout=subprocess.PIPE,
                              stderr=subprocess.PIPE)
         result = p.communicate()[1]
-        print result
 
         # Need to fix these checks to work with instrumentation
         if filename == 'direct1.bc':
@@ -77,8 +76,9 @@ for filename in files:
             if result.find('File: indirect3.c, Line: 14') == -1: runtime = False
             if result.find('File: indirect3.c, Line: 15') == -1: runtime = False
         elif filename == 'indirect4.bc':
-            if result.find('File: indirect4.c, Line: 12') != -1: runtime = False
-            if result.find('File: indirect4.c, Line: 13') != -1: runtime = False
+            runtime = False
+            #if result.find('File: indirect4.c, Line: 12') != -1: runtime = False
+            #if result.find('File: indirect4.c, Line: 13') != -1: runtime = False
         elif filename == 'array1.bc':
             if result.find('File: array1.c, Line: 10') == -1: runtime = False
             if result.find('File: array1.c, Line: 11') != -1: runtime = False
@@ -119,7 +119,7 @@ for filename in files:
             if result.find('File: struct3.c, Line: 21') != -1: runtime = False
             if result.find('File: struct3.c, Line: 22') == -1: runtime = False
         elif filename == 'context1.bc':
-            runtime = True
+            runtime = False
         elif filename == 'inter1.bc':
             if result.find('File: inter1.c, Line: 16') == -1: runtime = False
         elif filename == 'inter2.bc':
@@ -133,7 +133,8 @@ for filename in files:
         elif filename == 'list1.bc':
             if result.find('File: list1.c, Line: 35') == -1: runtime = False
         elif filename == 'list2.bc':
-            if result.find('File: list2.c, Line: 32') != -1: runtime = False
+            runtime = False
+            #if result.find('File: list2.c, Line: 32') != -1: runtime = False
         elif filename == 'flow1.bc':
             if result.find('File: flow1.c, Line: 10') != -1: runtime = False
             if result.find('File: flow1.c, Line: 14') == -1: runtime = False
