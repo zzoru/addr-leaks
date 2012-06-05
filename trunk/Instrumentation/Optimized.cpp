@@ -81,6 +81,7 @@ bool Optimized::runOnModule(Module& module)
 
 	HandleSinkCalls();
 	InstrumentDelayedPHINodes();
+    db("Finished instrumentation");
 
 	return true;
 }
