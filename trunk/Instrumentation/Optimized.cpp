@@ -11,6 +11,7 @@
 #endif
 
 cl::opt<bool> IsDumb("d", cl::desc("Specify whether to use the static analysis"), cl::desc("is dumb"));
+cl::opt<bool> Continue("c", cl::desc("Specify whether to continue the execution after detecting a leak"), cl::desc("continue execution"));
 
 //TODO: Handle functions like memset
 //TODO: Handle all instructions
@@ -27,6 +28,7 @@ Optimized::Optimized() : ModulePass(ID)
 bool Optimized::runOnModule(Module& module)
 {
 	dumb = IsDumb;
+    continueExecution = Continue;
 
 	Setup(module);
 	HandleSpecialFunctions(); //TODO: Must be first so the code that I added will not be instrumented. This solution is inelegant considering how the rest of the program handles these things
@@ -721,10 +723,23 @@ Function& Optimized::GetAssertZeroFunction()
 			GlobalValue::InternalLinkage,
 			"assertZero",
 			module);
-	Function* quitProgram = Function::Create(FunctionType::get(Type::getVoidTy(*context), false),
-			GlobalValue::ExternalLinkage,
-			"myAbort",
-			module);
+
+    Function *quitProgram;
+
+    if (continueExecution)
+    {
+	    quitProgram = Function::Create(FunctionType::get(Type::getVoidTy(*context), false),
+		    	GlobalValue::ExternalLinkage,
+			    "myAbort2",
+			    module);
+    }
+    else
+    {
+         quitProgram = Function::Create(FunctionType::get(Type::getVoidTy(*context), false),
+		    	GlobalValue::ExternalLinkage,
+			    "myAbort",
+			    module);
+    }
 
 	BasicBlock* entry = BasicBlock::Create(*context, "entry", assertZero);
 	Function::ArgumentListType& argList = assertZero->getArgumentList();
@@ -737,14 +752,16 @@ Function& Optimized::GetAssertZeroFunction()
 
 	CallInst* call = CallInst::Create(quitProgram, "", ifFalse);
 
-	UnreachableInst* unr = new UnreachableInst(*context, ifFalse);
+	//UnreachableInst* unr = new UnreachableInst(*context, ifFalse);
+	ReturnInst* ret2 = ReturnInst::Create(*context, ifFalse);
 
 	BranchInst* branch = BranchInst::Create(ifTrue, ifFalse, cmp, entry);
 
 	MarkAsInstrumented(*cmp);
 	MarkAsInstrumented(*ret);
 	MarkAsInstrumented(*call);
-	MarkAsInstrumented(*unr);
+	//MarkAsInstrumented(*unr);
+	MarkAsInstrumented(*ret2);
 
 	return GetAssertZeroFunction();
 }
