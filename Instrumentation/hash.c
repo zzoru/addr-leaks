@@ -36,3 +36,8 @@ void myAbort()
 	printf("An address was leaked\n");
 	exit(-1);
 }
+
+void myAbort2()
+{
+	printf("An address was leaked\n");
+}

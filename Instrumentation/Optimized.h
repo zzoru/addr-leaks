@@ -79,6 +79,7 @@ private:
 	std::set<Function*> returnsToBeHandled;
 
 	bool dumb;
+	bool continueExecution;
 };
 
 char Optimized::ID = 0;
