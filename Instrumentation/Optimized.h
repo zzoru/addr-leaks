@@ -50,32 +50,20 @@ private:
 	Function& GetAssertZeroFunction();
 	Function& GetTranslateFunction();
 	Value& CreateTranslateCall(Value& pointer, Instruction& before);
-//	Function& GetGetFromHashFunction();
 	Function& GetInitFunction();
 	Constant& GetInt(int width, int value);
 	Constant& GetAllOnesValue(Type& type);
 	Constant& GetNullValue(Type& type);
 	bool HasBody(Function&);
 	void HandleReturns(Function&);
-//	void HandleParam(Argument&);
 	GlobalVariable& GetReturnGlobal(Type&);
-//	GlobalVariable& GetReturnShadowMemory(Type&);
 	GlobalVariable& GetParamShadow(Argument&);
 	void AddShadow(Value&, Value&);
 	Value& GetShadow(Value&);
-//	Value& GetShadowMemory(Value&);
-//	void AddShadowMemory(Value&, Value&);
-//	Value* CreateArgumentShadowMemory(Argument&);
-//	void SetupParamPassingShadows();
-//	void AddParamShadow(Argument&, GlobalVariable&);
-//	GlobalVariable& GetParamGlobal(Argument&); 
 	Function& GetMemsetFunction(int);
 	void InstrumentDelayedPHINodes();
-//	void CreateAndInsertFillMemoryCode(Value& ptr, Value& numBytes, Value& value, Instruction& insertBefore);
 	void HandleParamPassingTo(Function&, int, Value*);
 	Value* HandleExternFunctionCall(CallSite&);
-//	Value* HandlePrintfCall(CallSite&);
-//	Value* HandleMallocCall(CallSite&);
 	Instruction* GetNextInstruction(Instruction&);
 	Function& GetCreateArgvShadowFunction();
 	virtual void getAnalysisUsage(AnalysisUsage &Info) const;
@@ -86,16 +74,12 @@ private:
 	Module* module;
 	LLVMContext* context;
 	TargetData* targetData;
-//	std::map<Value*, Value*> shadowMemoryMap;
 	std::map<Value*, Value*> valueToShadow;
-	std::map<PHINode*, PHINode*> delayedPHINodes; //TODO: That is not a good name but I can't think any better than this right now
-//	std::map<PHINode*, PHINode*> delayedPHIShadowMemoryNodes;
+	std::map<PHINode*, PHINode*> delayedPHINodes; 
 	AddrLeaks* analysis;
 	std::set<Value*> instrumented;
 	std::set<Value*> leakedValues;
-	
-//	static const int target = 64;
-//	static const int ptrSize = 64;
+
 	bool dumb;
 };
 
