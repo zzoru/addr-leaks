@@ -2,6 +2,8 @@
 
 import os
 import subprocess
+import sys
+from optparse import OptionParser
 
 from termcolor import colored
 
@@ -10,6 +12,13 @@ def count(output):
     return output.count('An address was leaked\n')
 
 def main():
+    parser = OptionParser()
+    parser.add_option('-d', '--dumb',
+               dest='dumb', default=False, action='store_true',
+               help='dumb/full instrumentation')
+
+    options, args = parser.parse_args()
+    
     directory = '../AddrLeaks/tests/'
 
     files = ['direct1.bc', 'direct2.bc', 'direct3.bc', 'direct4.bc', 'direct5.bc',
@@ -30,11 +39,20 @@ def main():
     for filename in files:
         _file = open(directory + filename, 'rb')
         instrumented_file = open('instrumented.bc', 'wb')
-        p = subprocess.Popen(['opt', '-load', 
-                              '/home/gabriel/llvm/llvm-3.0.src/lib/Transforms/InstAddrLeaks/pass.so',
-                              '-c', '-leak'],
-                             shell=False, stdin=_file, stdout=instrumented_file,
-                             stderr=subprocess.PIPE)
+        
+        if options.dumb:
+            p = subprocess.Popen(['opt', '-load', 
+                                  '/home/gabriel/llvm/llvm-3.0.src/lib/Transforms/InstAddrLeaks/pass.so',
+                                  '-c', '-d', '-leak'],
+                                 shell=False, stdin=_file, stdout=instrumented_file,
+                                 stderr=subprocess.PIPE)
+        else:
+            p = subprocess.Popen(['opt', '-load', 
+                                  '/home/gabriel/llvm/llvm-3.0.src/lib/Transforms/InstAddrLeaks/pass.so',
+                                  '-c', '-leak'],
+                                 shell=False, stdin=_file, stdout=instrumented_file,
+                                 stderr=subprocess.PIPE)
+
         p.communicate()
 
         instrumentation = True
