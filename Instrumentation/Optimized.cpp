@@ -409,7 +409,7 @@ void Optimized::HandleSpecialFunctions()
 				MemCpyInst* mcy; 
 				StoreInst* store;
 
-				if (mcy = dyn_cast<MemCpyInst>(&*it)) 
+				if ((mcy = dyn_cast<MemCpyInst>(&*it))) 
 				{
 					HandleMemcpy(*mcy);
 				} 
@@ -884,7 +884,7 @@ Value& Optimized::GetShadow(Value& value)
 	Constant* c;
 	Argument* param;
 
-	if (i = dyn_cast<Instruction>(&value))
+	if ((i = dyn_cast<Instruction>(&value)))
 	{
 		if (AlreadyInstrumented(*i))
 		{
@@ -903,11 +903,11 @@ Value& Optimized::GetShadow(Value& value)
 		Instrument(*i);
 		return GetShadow(*i);
 	}
-	else if (gv = dyn_cast<GlobalVariable>(&value))
+	else if ((gv = dyn_cast<GlobalVariable>(&value)))
 	{
 		return GetAllOnesValue(*gv->getType());
 	}
-	else if (param = dyn_cast<Argument>(&value))
+	else if ((param = dyn_cast<Argument>(&value)))
 	{
 		db("Handling param: " << *param);
 		static std::map<Argument*, Value*> handledParams;
@@ -934,7 +934,7 @@ Value& Optimized::GetShadow(Value& value)
 		//		HandleParamPassingTo(*f, *param);
 		return *shadow;
 	}
-	else if (c = dyn_cast<Constant>(&value))
+	else if ((c = dyn_cast<Constant>(&value)))
 	{
 		if (c->getType()->isPointerTy())
 		{
