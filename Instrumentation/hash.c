@@ -27,7 +27,7 @@ void* translate(void* addr)
 	}
 	else 
 	{
-		return begin - MAX_MEMORY / 2 + addr;
+		return begin - MAX_MEMORY / 2 + (long) addr;
 	}
 }
 
