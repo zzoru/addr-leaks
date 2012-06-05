@@ -1,5 +1,5 @@
-CC=llvm-gcc
-CFLAGS=-emit-llvm -I/usr/include/i386-linux-gnu/ -g
+CC=clang
+CFLAGS=-emit-llvm -g
 
 SRCS=$(wildcard *.c)
 OBJS=$(SRCS:.c=.bc)
