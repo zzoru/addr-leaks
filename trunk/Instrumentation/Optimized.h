@@ -36,49 +36,47 @@ public:
 	virtual bool runOnModule(Module&);
 	
 private:
-	unsigned Optimized::GetSize(Type& type);
-	GlobalVariable& GetParamGlobal(Argument& arg);
-	Type* ConvertType(Type*);
-	Function& GetAssertStringFunction();
-	void HandlePrintf(CallSite*);
+	std::vector<std::pair<Instruction*, std::vector<Value*> > > getPrintfLeaks();
+	void HandleSinkCalls();
+	void AddAssertCode(Value& shadow, Instruction& sinkCall);
+	unsigned GetAllocSize(Type& type);
+	GlobalVariable& GetParamGlobal(Type&, unsigned argNo);
+	
+	unsigned GetSize(Type& type);
+	
+	void HandlePrintf(CallSite&);
 	void HandleUses(Value& v);
 	void HandleSpecialFunctions();
 	void HandleMemcpy(MemCpyInst&);
 	void Setup(Module&);
-	Value& Instrument(Instruction&);
-	Value& Instrument(Value&);
+	void Instrument(Instruction&);
 	Function& GetAssertZeroFunction();
 	Function& GetTranslateFunction();
 	Value& CreateTranslateCall(Value& pointer, Instruction& before);
 	Function& GetInitFunction();
-	Constant& GetInt(int width, int value);
 	Constant& GetAllOnesValue(Type& type);
 	Constant& GetNullValue(Type& type);
 	bool HasBody(Function&);
 	void HandleReturns(Function&);
 	GlobalVariable& GetReturnGlobal(Type&);
-	GlobalVariable& GetParamShadow(Argument&);
-	void AddShadow(Value&, Value&);
+	void AddShadow(Instruction&, Value& shadow);
 	Value& GetShadow(Value&);
-	Function& GetMemsetFunction(int);
 	void InstrumentDelayedPHINodes();
-	void HandleParamPassingTo(Function&, int, Value*);
+	void HandleParamPassingTo(Function&, Argument&);
 	Value* HandleExternFunctionCall(CallSite&);
 	Instruction* GetNextInstruction(Instruction&);
-	Function& GetCreateArgvShadowFunction();
 	virtual void getAnalysisUsage(AnalysisUsage &Info) const;
-	bool AlreadyInstrumented(Value&);
-	void MarkAsInstrumented(Value&);
-	bool MayBePointer(Value&);
+	bool AlreadyInstrumented(Instruction& i);
+	void MarkAsInstrumented(Instruction&);
 	
 	Module* module;
 	LLVMContext* context;
 	TargetData* targetData;
-	std::map<Value*, Value*> valueToShadow;
 	std::map<PHINode*, PHINode*> delayedPHINodes; 
 	AddrLeaks* analysis;
-	std::set<Value*> instrumented;
-	std::set<Value*> leakedValues;
+	
+	std::map<Function*, Argument*> callsToBeHandled;
+	std::set<Function*> returnsToBeHandled;
 
 	bool dumb;
 };
