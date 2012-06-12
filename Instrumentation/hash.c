@@ -10,7 +10,7 @@ void* begin;
 
 void createShadowMemory()
 {
-	void* begin = mmap(0, MAX_MEMORY / 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, 0, 0); 
+	begin = mmap(0, MAX_MEMORY / 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, 0, 0); 
 	
 	if (begin== MAP_FAILED) 
 	{
