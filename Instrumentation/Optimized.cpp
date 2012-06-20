@@ -84,8 +84,8 @@ bool Optimized::runOnModule(Module& module)
 	HandleSinkCalls();
 	InstrumentDelayedPHINodes();
     db("Finished instrumentation");
-
-	return true;
+    
+    return true;
 }
 
 /*********************************************************************************************************************************************************************************
@@ -96,7 +96,7 @@ void Optimized::AddAssertCode(Value& shadow, Instruction& sinkCall)
 {	
 	
 	Type* iN = Type::getIntNTy(*context, GetSize(*shadow.getType()));
-	CastInst* cast; CastInst::Create(Instruction::BitCast, &shadow, iN, "", &sinkCall);
+	CastInst* cast; //CastInst::Create(Instruction::BitCast, &shadow, iN, "", &sinkCall);
 	
 	if (shadow.getType()->isPointerTy())
 	{
