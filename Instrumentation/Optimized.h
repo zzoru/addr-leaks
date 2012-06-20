@@ -75,7 +75,7 @@ private:
 	std::map<PHINode*, PHINode*> delayedPHINodes; 
 	AddrLeaks* analysis;
 	
-	std::map<Function*, Argument*> callsToBeHandled;
+	std::set<std::pair<Function*, Argument*> > callsToBeHandled;
 	std::set<Function*> returnsToBeHandled;
 
 	bool dumb;
