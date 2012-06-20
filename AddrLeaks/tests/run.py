@@ -41,8 +41,8 @@ for filename in files:
     elif filename == 'direct4.bc':
         if result.find('File: direct4.c, Line: 11') == -1: passed = False
     elif filename == 'direct5.bc':
-        if result.find('File: direct5.c, Line: 15') == -1: passed = False
-        if result.find('File: direct5.c, Line: 16') == -1: passed = False
+        if result.find('File: direct5.c, Line: 14') == -1: passed = False
+        if result.find('File: direct5.c, Line: 13') == -1: passed = False
     elif filename == 'indirect1.bc':
         if result.find('File: indirect1.c, Line: 10') == -1: passed = False
         if result.find('File: indirect1.c, Line: 14') == -1: passed = False
