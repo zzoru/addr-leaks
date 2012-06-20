@@ -67,7 +67,7 @@ bool Optimized::runOnModule(Module& module)
 	}
 
 	db("!!!Begin handling param passing");
-	for (std::map<Function*, Argument*>::iterator it = callsToBeHandled.begin(), itEnd = callsToBeHandled.end(); it != itEnd; it++)
+	for (std::set<std::pair<Function*, Argument*> >::iterator it = callsToBeHandled.begin(), itEnd = callsToBeHandled.end(); it != itEnd; it++)
 	{
 		HandleParamPassingTo(*it->first, *it->second);
 	}
@@ -594,13 +594,37 @@ void Optimized::Instrument(Instruction& instruction)
 		newShadow = &GetAllOnesValue(*gep.getType());
 		break;
 	}
-	
+	case Instruction::PtrToInt: // TODO: Check if this should be used for the other cast instructions below
+    {
+        /*
+        CastInst& ci = cast<CastInst>(instruction);
+        Value *pointer = ci.getOperand(0);
+
+        Value& shadowPtr = CreateTranslateCall(*pointer, ci);
+        Type* iNType = Type::getIntNTy(*context, targetData->getPointerSizeInBits());
+        Type* type = pointer->getType();
+        Type* type2 = cast<SequentialType>(type)->getElementType();
+		Value& shadow = GetAllOnesValue(*type2);
+
+        StoreInst* shadowStore = new StoreInst(&shadow, &shadowPtr, &ci);
+        newShadow = shadowStore;
+        */
+
+        /*
+        Type* iNType = Type::getIntNTy(*context, targetData->getPointerSizeInBits());
+        CastInst& ci = cast<CastInst>(instruction);
+        Value *pointer = ci.getOperand(0);
+        newShadow = &GetShadow(*pointer);
+        */
+        Type* iNType = Type::getInt32Ty(*context);
+        newShadow = &GetAllOnesValue(*iNType);
+        break;
+    }
 	case Instruction::BitCast:
 	case Instruction::Trunc:    
 	case Instruction::ZExt:     
 	case Instruction::SExt:     
 	case Instruction::IntToPtr: 
-	case Instruction::PtrToInt:
 	case Instruction::SIToFP: 
 	case Instruction::FPToSI:
 	case Instruction::UIToFP:
