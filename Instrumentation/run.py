@@ -27,7 +27,7 @@ def main():
              'struct1.bc', 'struct2.bc', 'struct3.bc',
              'context1.bc',
              'inter1.bc', 'inter2.bc',
-             'strings1.bc',
+             'strings1.bc', 'strings2.bc', 'strings3.bc', 'strings4.bc',
              'list1.bc', 'list2.bc',
              'flow1.bc', 'flow2.bc', 'flow3.bc'
              ]
@@ -113,6 +113,12 @@ def main():
                 if count(result) != 4: runtime = False
             elif filename == 'strings1.bc':
                 if count(result) != 2: runtime = False
+            elif filename == 'strings2.bc':
+                if count(result) != 1: runtime = False
+            elif filename == 'strings3.bc':
+                if count(result) != 0: runtime = False
+            elif filename == 'strings4.bc':
+                if count(result) != 0: runtime = False
             elif filename == 'list1.bc':
                 if count(result) != 1: runtime = False
             elif filename == 'list2.bc':
