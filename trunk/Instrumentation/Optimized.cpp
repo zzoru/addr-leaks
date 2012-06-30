@@ -84,7 +84,7 @@ bool Optimized::runOnModule(Module& module)
 	HandleSinkCalls();
 	InstrumentDelayedPHINodes();
     db("Finished instrumentation");
-    
+   
     return true;
 }
 
@@ -445,8 +445,8 @@ void Optimized::HandleMemcpy(MemCpyInst& i)
 	Value* dest = i.getRawDest();
 	Value& newDest = CreateTranslateCall(*dest, i);
 	std::vector<Value*> args;
-	args.push_back(&newSrc);
 	args.push_back(&newDest);
+	args.push_back(&newSrc);
 	args.push_back(i.getLength()); //TODO: these args might be wrong
 	args.push_back(i.getAlignmentCst());
 	args.push_back(i.getVolatileCst());
@@ -594,33 +594,33 @@ void Optimized::Instrument(Instruction& instruction)
 		newShadow = &GetAllOnesValue(*gep.getType());
 		break;
 	}
-	case Instruction::PtrToInt: // TODO: Check if this should be used for the other cast instructions below
+	/*
+    case Instruction::PtrToInt: // TODO: Check if this should be used for the other cast instructions below
     {
-        /*
-        CastInst& ci = cast<CastInst>(instruction);
-        Value *pointer = ci.getOperand(0);
+        //CastInst& ci = cast<CastInst>(instruction);
+        //Value *pointer = ci.getOperand(0);
 
-        Value& shadowPtr = CreateTranslateCall(*pointer, ci);
-        Type* iNType = Type::getIntNTy(*context, targetData->getPointerSizeInBits());
-        Type* type = pointer->getType();
-        Type* type2 = cast<SequentialType>(type)->getElementType();
-		Value& shadow = GetAllOnesValue(*type2);
+        //Value& shadowPtr = CreateTranslateCall(*pointer, ci);
+        //Type* iNType = Type::getIntNTy(*context, targetData->getPointerSizeInBits());
+        //Type* type = pointer->getType();
+        //Type* type2 = cast<SequentialType>(type)->getElementType();
+		//Value& shadow = GetAllOnesValue(*type2);
 
-        StoreInst* shadowStore = new StoreInst(&shadow, &shadowPtr, &ci);
-        newShadow = shadowStore;
-        */
+        //StoreInst* shadowStore = new StoreInst(&shadow, &shadowPtr, &ci);
+        //newShadow = shadowStore;
 
-        /*
-        Type* iNType = Type::getIntNTy(*context, targetData->getPointerSizeInBits());
-        CastInst& ci = cast<CastInst>(instruction);
-        Value *pointer = ci.getOperand(0);
-        newShadow = &GetShadow(*pointer);
-        */
+        //Type* iNType = Type::getIntNTy(*context, targetData->getPointerSizeInBits());
+        //CastInst& ci = cast<CastInst>(instruction);
+        //Value *pointer = ci.getOperand(0);
+        
         Type* iNType = Type::getInt32Ty(*context);
         newShadow = &GetAllOnesValue(*iNType);
         break;
     }
-	case Instruction::BitCast:
+    */
+	case Instruction::PtrToInt:
+    case Instruction::FPExt:
+    case Instruction::BitCast:
 	case Instruction::Trunc:    
 	case Instruction::ZExt:     
 	case Instruction::SExt:     
@@ -630,9 +630,16 @@ void Optimized::Instrument(Instruction& instruction)
 	case Instruction::UIToFP:
 	case Instruction::FPToUI:
 	{
+        CastInst& ci = cast<CastInst>(instruction);
+        Value *v = ci.getOperand(0);
+
+		newShadow = CastInst::Create(ci.getOpcode(), &GetShadow(*v), ci.getDestTy(), "", &instruction);
+        break;
+        /*
 		CastInst& ci = cast<CastInst>(instruction);
 		newShadow = CastInst::Create(ci.getOpcode(), ci.getOperand(0), ci.getDestTy(), "", &instruction);
 		break;
+        */
 	}
 	case Instruction::ICmp:
 	case Instruction::FCmp:
@@ -982,6 +989,10 @@ Value& Optimized::GetShadow(Value& value)
 		{
 			return GetAllOnesValue(*c->getType()); 
 		}
+        else if (dyn_cast<ConstantExpr>(&value))
+        {
+            return GetAllOnesValue(*c->getType());
+        }
 		else
 		{
 			return GetNullValue(*c->getType());
