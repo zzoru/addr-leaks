@@ -12,7 +12,7 @@ files = ['direct1.bc', 'direct2.bc', 'direct3.bc', 'direct4.bc', 'direct5.bc',
          'struct1.bc', 'struct2.bc', 'struct3.bc',
          'context1.bc',
          'inter1.bc', 'inter2.bc',
-         'strings1.bc',
+         'strings1.bc', 'strings2.bc', 'strings3.bc', 'strings4.bc',
          'list1.bc', 'list2.bc',
          'flow1.bc', 'flow2.bc', 'flow3.bc'
          ]
@@ -113,6 +113,12 @@ for filename in files:
     elif filename == 'strings1.bc':
         if result.find('File: strings1.c, Line: 12') == -1: passed = False
         if result.find('File: strings1.c, Line: 15') == -1: passed = False
+    elif filename == 'strings2.bc':
+        if result.find('File: strings2.c, Line: 11') == -1: passed = False
+    elif filename == 'strings3.bc':
+        if result.find('File: strings3.c, Line: 11') != -1: passed = False
+    elif filename == 'strings4.bc':
+        if result.find('File: strings4.c, Line: 10') != -1: passed = False
     elif filename == 'list1.bc':
         if result.find('File: list1.c, Line: 35') == -1: passed = False
     elif filename == 'list2.bc':
