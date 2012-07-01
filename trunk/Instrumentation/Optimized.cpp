@@ -3,7 +3,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
 
-#define DEBUG 
+//#define DEBUG 
 #ifndef DEBUG
 #define db(x) ;;;
 #else
@@ -436,7 +436,7 @@ void Optimized::Setup(Module& module)
   Specific function to instrument the different types of instructions.
  */
 void Optimized::Instrument(Instruction& instruction)
-{	
+{
 	static char ident[100] = "";
 	static int i = 0;
 	ident[i] = 0;
@@ -627,9 +627,9 @@ void Optimized::Instrument(Instruction& instruction)
 
 		if (cs.getType()->isVoidTy()) return;
 
-		if (cs.getCalledFunction() == 0 || HasBody(*cs.getCalledFunction()))
+		if (cs.getCalledFunction() == 0 || (cs.getCalledFunction() != 0 && HasBody(*cs.getCalledFunction())))
 		{
-			if (HasBody(*cs.getCalledFunction()))
+			if (cs.getCalledFunction() != 0 && HasBody(*cs.getCalledFunction()))
 			{
 				returnsToBeHandled.insert(cs.getCalledFunction());
 			}
