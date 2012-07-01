@@ -83,11 +83,9 @@ bool Optimized::runOnModule(Module& module)
 
 	HandleSinkCalls();
 
-    db("TAMANHO " << delayedPHINodes.size());
     while (!delayedPHINodes.empty())
     {
         InstrumentDelayedPHINodes();
-        db("TAMANHO " << delayedPHINodes.size());
     }
 
     db("Finished instrumentation");
