@@ -39,12 +39,13 @@ private:
 	std::vector<std::pair<Instruction*, std::vector<Value*> > > getPrintfLeaks();
 	void HandleSinkCalls();
 	void AddAssertCode(Value& shadow, Instruction& sinkCall);
+	void AddStringAssertCode(Value& shadow, Instruction& sinkCall);
 	unsigned GetAllocSize(Type& type);
 	GlobalVariable& GetParamGlobal(Type&, unsigned argNo);
 	
 	unsigned GetSize(Type& type);
 	
-	void HandlePrintf(CallSite&);
+	void HandlePrintf(CallSite*);
 	void HandleUses(Value& v);
 	void HandleSpecialFunctions();
 	void HandleMemcpy(MemCpyInst&);
