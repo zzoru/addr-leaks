@@ -80,6 +80,8 @@ namespace {
         VNodeSet vertices1;
         INodeSet vertices2;
 
+        std::set<Value*> functions;
+
         std::map<VNode, VNodeSet> memoryGraphVV;
         std::map<VNode, INodeSet> memoryGraphVi;
         std::map<INode, INodeSet> memoryGraphii;
@@ -593,6 +595,7 @@ bool AddrLeaks::runOnModule(Module &M) {
             addConstraints(*F);
             matchFormalWithActualParameters(*F);
             matchReturnValueWithReturnVariable(*F);
+            functions.insert(F);
         }
     }
 
@@ -1617,6 +1620,10 @@ void AddrLeaks::buildMyGraph(Function &F) {
                             
                             vertices1.insert(std::make_pair(I, VALUE));
                             vertices1.insert(std::make_pair(CI->getCalledValue(), VALUE));
+                            
+                            if (functions.find(CI->getCalledValue()) == functions.end()) { // this is not an internal function
+                                sources.insert(std::make_pair(CI->getCalledValue(), VALUE));
+                            }
                         }
 
                         if (FF && FF->getName() == "itoa") {
