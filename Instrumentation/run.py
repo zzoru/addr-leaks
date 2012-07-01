@@ -43,13 +43,13 @@ def main():
         if options.dumb:
             p = subprocess.Popen(['opt', '-load', 
                                   '/home/gabriel/llvm/llvm-3.0.src/lib/Transforms/InstAddrLeaks/pass.so',
-                                  '-c', '-d', '-leak'],
+                                  '-c', '-d', '-mem2reg', '-instnamer', '-internalize', '-inline', '-globaldce', '-leak'],
                                  shell=False, stdin=_file, stdout=instrumented_file,
                                  stderr=subprocess.PIPE)
         else:
             p = subprocess.Popen(['opt', '-load', 
                                   '/home/gabriel/llvm/llvm-3.0.src/lib/Transforms/InstAddrLeaks/pass.so',
-                                  '-c', '-leak'],
+                                  '-c', '-mem2reg', '-instnamer', '-internalize', '-inline', '-globaldce', '-leak'],
                                  shell=False, stdin=_file, stdout=instrumented_file,
                                  stderr=subprocess.PIPE)
 
