@@ -988,7 +988,7 @@ void AddrLeaks::addConstraints(Function &F) {
 
                                                 std::vector<int> mems = memoryBlock[v2];
                                                 int parent = mems[0];
-                                                if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
+                                                if (memoryBlock2.count(parent)) {
                                                     std::vector<int> mems2 = memoryBlock2[parent];
 
                                                     int a = Value2Int(I);
@@ -1046,7 +1046,7 @@ void AddrLeaks::addConstraints(Function &F) {
                                                     i++;
                                                 }
 
-                                                if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
+                                                if (memoryBlock2.count(parent)) {
                                                     std::vector<int> mems2 = memoryBlock2[parent];
                                                     int a = Value2Int(I);
 
@@ -1081,7 +1081,7 @@ void AddrLeaks::addConstraints(Function &F) {
 
                                         std::vector<int> mems = memoryBlock[v2];
                                         int parent = mems[0];
-                                        if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
+                                        if (memoryBlock2.count(parent)) {
                                             std::vector<int> mems2 = memoryBlock2[parent];
 
                                             int a = Value2Int(I);
@@ -1139,7 +1139,7 @@ void AddrLeaks::addConstraints(Function &F) {
                                             i++;
                                         }
 
-                                        if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
+                                        if (memoryBlock2.count(parent)) {
                                             std::vector<int> mems2 = memoryBlock2[parent];
                                             int a = Value2Int(I);
                                             
@@ -1365,7 +1365,7 @@ void AddrLeaks::buildMyGraph(Function &F) {
                                     std::vector<int> mems = memoryBlock[v2];
                                     int parent = mems[0];
 
-                                    if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
+                                    if (memoryBlock2.count(parent)) {
                                         std::vector<int> mems2 = memoryBlock2[parent];
 
                                         if (pos < mems2.size()) {
@@ -1414,6 +1414,7 @@ void AddrLeaks::buildMyGraph(Function &F) {
                                 }
 
                                 std::vector<int> mems = memoryBlock[v2];
+                                
                                 if (pos < mems.size()) {
                                     int parent = mems[pos];
                                    
@@ -1427,7 +1428,7 @@ void AddrLeaks::buildMyGraph(Function &F) {
                                         i++;
                                     }
                                     
-                                    if (parent >= 0 && (unsigned)parent < memoryBlock2.size()) {
+                                    if (memoryBlock2.count(parent)) {
                                         std::vector<int> mems2 = memoryBlock2[parent];
                                    
                                         if (pos2 < mems2.size()) {
