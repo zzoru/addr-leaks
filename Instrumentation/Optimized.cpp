@@ -92,6 +92,21 @@ bool Optimized::runOnModule(Module& module)
  * PRIVATE METHODS IMPLEMENTATION
  *********************************************************************************************************************************************************************************/
 
+void Optimized::AddStringAssertCode(Value& shadow, Instruction& sinkCall)
+{	
+	Type* iN = Type::getIntNTy(*context, GetSize(*shadow.getType()));
+    LoadInst* load = new LoadInst(&shadow, "", &sinkCall);
+	
+	MarkAsInstrumented(*load);
+
+	ICmpInst* cmp = new ICmpInst(&sinkCall, CmpInst::ICMP_NE, load, &GetNullValue(*iN), "");
+	Function& assertZero = GetAssertZeroFunction();
+	std::vector<Value*> args;
+	args.push_back(cmp);
+	CallInst* call = CallInst::Create(&assertZero, args, "", &sinkCall); 
+	MarkAsInstrumented(*call);
+}
+
 void Optimized::AddAssertCode(Value& shadow, Instruction& sinkCall)
 {	
 	
@@ -148,197 +163,138 @@ void Optimized::HandleSinkCalls()
 		{
 			if (dyn_cast<CallInst>(*it) || dyn_cast<InvokeInst>(*it))
 			{
-				CallSite cs(*it);
-
-				CallSite::arg_iterator argIt = cs.arg_begin();
-				CallSite::arg_iterator argItEnd = cs.arg_end();
-
-				//TODO: Is it right to ignore the first argument of a printf function? I believe it isn't but for now let's just ignore it
-				argIt++; //skips the first argument
-
-				while (argIt != argItEnd)
-				{
-					Value& shadow = GetShadow(**argIt);
-					AddAssertCode(shadow, *cs.getInstruction());
-					argIt++;
-				}
+                CallSite cs(*it);
+                HandlePrintf(&cs);
 			}
 		}
 	}
 }
 
-///*
+
 //  This function inserts the abort code into the instrumented program. so far
 //  we are only checking if a printf can leak address. Thus, this function 
 //  goes over the string format argument of the printf function, and for each
 //  data that can be printed, it checks instruments this data. If the data
 //  might contain an address, then this function inserts an exit code there.
-// */
-//void Optimized::HandlePrintf(CallSite* cs)
-//{
-//	db("Handling printf")
-//
-//	CallSite::arg_iterator AI = cs->arg_begin();
-//
-//	std::vector<bool> vaza, isString;
-//	Value *fmt = *AI;
-//	std::string formatString;
-//	bool hasFormat = false;
-//
-//	if (ConstantExpr *CE = dyn_cast<ConstantExpr>(fmt)) {
-//		if (GlobalVariable *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
-//			if (ConstantArray *CA = dyn_cast<ConstantArray>(GV->getInitializer())) {
-//				if (CA->isString()) {
-//					formatString = CA->getAsString();
-//					hasFormat = true;
-//				}
-//			}
-//		}
-//	}
-//
-//	int narg = 0;
-//
-//	//TODO: This is not entirely correct. It ignores, for example, specifiers like %.3f etc
-//
-//	if (!formatString.empty()) {
-//
-//
-//		int size = formatString.size();
-//		int i = 0;
-//
-//
-//		while (true)
-//		{
-//			while (i < size && formatString[i] != '%') i++;
-//
-//			if (i == size) break;
-//			i++;
-//
-//			if (i < size && isdigit(formatString[i]))
-//			{
-//				while (isdigit(formatString[i])) i++;
-//			}
-//
-//			if (i < size && formatString[i] == '*')
-//			{
-//				vaza.push_back(false);
-//				isString.push_back(false);
-//				i++;
-//			}
-//
-//			if (i < size && formatString[i] == '.')
-//			{
-//				i++;
-//				while (i < size && isdigit(formatString[i])) i++;
-//			}
-//
-//			if (i < size)
-//			{
-//				switch (formatString[i])
-//				{
-//				case 'c':
-//				case 'e':
-//				case 'E':
-//				case 'f':
-//				case 'g':
-//				case 'G':
-//				case 'n':
-//				case 'L':
-//				case '%':
-//					vaza.push_back(false);
-//					isString.push_back(false);
-//					break;
-//				case 'd':
-//				case 'i':
-//				case 'o':
-//				case 'u':
-//				case 'x':
-//				case 'X':
-//				case 'p':
-//				case 'h':
-//				case 'l':
-//					vaza.push_back(true);
-//					isString.push_back(false);
-//					break;
-//				case 's':
-//					vaza.push_back(true);
-//					isString.push_back(true);
-//					break;
-//				}
-//			}
-//
-//			i++;
-//		}
-//	}
-//
-//	//			if (formatString[i] == '%') {
-//	//				if (formatString[i + 1] == 'c' ||
-//	//						formatString[i + 1] == 'e' ||
-//	//						formatString[i + 1] == 'E' ||
-//	//						formatString[i + 1] == 'f' ||
-//	//						formatString[i + 1] == 'g' ||
-//	//						formatString[i + 1] == 'G' ||
-//	//						formatString[i + 1] == 'n' ||
-//	//						formatString[i + 1] == 'L' ||
-//	//						formatString[i + 1] == '%') {
-//	//					vaza.push_back(false);
-//	//					isString.push_back(false);
-//	//					i++;
-//	//				} else if (formatString[i + 1] == 'd' ||
-//	//						formatString[i + 1] == 'i' ||
-//	//						formatString[i + 1] == 'o' ||
-//	//						formatString[i + 1] == 'u' ||
-//	//						formatString[i + 1] == 'x' ||
-//	//						formatString[i + 1] == 'X' ||
-//	//						formatString[i + 1] == 'p' ||
-//	//						formatString[i + 1] == 'h' ||
-//	//						formatString[i + 1] == 'l') {
-//	//					vaza.push_back(true);
-//	//					isString.push_back(false);
-//	//					i++;
-//	//				} else if (formatString[i + 1] == 's') { // Special case
-//	//
-//	//					vaza.push_back(true);
-//	//					isString.push_back(true);
-//	//					//					isString[vaza.size() - 1] = true;
-//	//					i++;
-//	//				}
-//	//			}
-//	//		}
-//	//	}
-//
-//	for (int i = 0; i < vaza.size(); i++)
-//	{
-//		if (vaza[i])
-//		{
-//			if (isString[i])
-//			{
-//
-//				Value* arg = cs->getArgument(i + 1);
-//
-//				BitCastInst* cast = new BitCastInst(arg, Type::getInt8PtrTy(*context), "", cs->getInstruction());
-//				Function& assertStringFunction = GetAssertStringFunction();
-//				std::vector<Value*> args;
-//				args.push_back(cast);
-//				CallInst::Create(&assertStringFunction, args, "", cs->getInstruction());
-//			}
-//			else
-//			{
-//				Value* arg = cs->getArgument(i + 1);
-//
-//				Value& shadow = GetShadow(*arg);
-//				ICmpInst* cmp = new ICmpInst(cs->getInstruction(), CmpInst::ICMP_NE, &shadow, Constant::getNullValue(shadow.getType()), "");
-//				Function& assertZero = GetAssertZeroFunction();
-//				std::vector<Value*> args;
-//				args.push_back(cmp);
-//				CallInst* assertZeroCall = CallInst::Create(&assertZero, args, "", cs->getInstruction()); //TODO: memory leak?
-//			}
-//		}
-//
-//	}
-//
-//
-//}
+// 
+void Optimized::HandlePrintf(CallSite *cs)
+{
+	db("Handling printf")
+
+	CallSite::arg_iterator AI = cs->arg_begin();
+
+	std::vector<bool> vaza, isString;
+	Value *fmt = *AI;
+	std::string formatString;
+	bool hasFormat = false;
+
+	if (ConstantExpr *CE = dyn_cast<ConstantExpr>(fmt)) {
+		if (GlobalVariable *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
+			if (ConstantArray *CA = dyn_cast<ConstantArray>(GV->getInitializer())) {
+				if (CA->isString()) {
+					formatString = CA->getAsString();
+					hasFormat = true;
+				}
+			}
+		}
+	}
+
+	int narg = 0;
+
+	//TODO: This is not entirely correct. It ignores, for example, specifiers like %.3f etc
+
+	if (!formatString.empty()) {
+
+
+		int size = formatString.size();
+		int i = 0;
+
+
+		while (true)
+		{
+			while (i < size && formatString[i] != '%') i++;
+
+			if (i == size) break;
+			i++;
+
+			if (i < size && isdigit(formatString[i]))
+			{
+				while (isdigit(formatString[i])) i++;
+			}
+
+			if (i < size && formatString[i] == '*')
+			{
+				vaza.push_back(false);
+				isString.push_back(false);
+				i++;
+			}
+
+			if (i < size && formatString[i] == '.')
+			{
+				i++;
+				while (i < size && isdigit(formatString[i])) i++;
+			}
+
+			if (i < size)
+			{
+				switch (formatString[i])
+				{
+				case 'c':
+				case 'e':
+				case 'E':
+				case 'f':
+				case 'g':
+				case 'G':
+				case 'n':
+				case 'L':
+				case '%':
+					vaza.push_back(false);
+					isString.push_back(false);
+					break;
+				case 'd':
+				case 'i':
+				case 'o':
+				case 'u':
+				case 'x':
+				case 'X':
+				case 'p':
+				case 'h':
+				case 'l':
+					vaza.push_back(true);
+					isString.push_back(false);
+					break;
+				case 's':
+					vaza.push_back(true);
+					isString.push_back(true);
+					break;
+				}
+			}
+
+			i++;
+		}
+	}
+
+	for (int i = 0; i < vaza.size(); i++)
+	{
+		if (vaza[i])
+		{
+			if (isString[i])
+			{
+                /*
+				Value* arg = cs->getArgument(i + 1);
+                Value &src = CreateTranslateCall(*arg, *cs->getInstruction());
+                AddStringAssertCode(src, *cs->getInstruction());
+                */
+			}
+			else
+			{
+				Value* arg = cs->getArgument(i + 1);
+                Value& shadow = GetShadow(*arg);
+                AddAssertCode(shadow, *cs->getInstruction());
+			}
+		}
+	}
+}
 
 /*
   This function implements the data transfer between function calls.
@@ -620,6 +576,7 @@ void Optimized::Instrument(Instruction& instruction)
     */
 	case Instruction::PtrToInt:
     case Instruction::FPExt:
+    case Instruction::FPTrunc:
     case Instruction::BitCast:
 	case Instruction::Trunc:    
 	case Instruction::ZExt:     
