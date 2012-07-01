@@ -82,7 +82,14 @@ bool Optimized::runOnModule(Module& module)
 
 
 	HandleSinkCalls();
-	InstrumentDelayedPHINodes();
+
+    db("TAMANHO " << delayedPHINodes.size());
+    while (!delayedPHINodes.empty())
+    {
+        InstrumentDelayedPHINodes();
+        db("TAMANHO " << delayedPHINodes.size());
+    }
+
     db("Finished instrumentation");
    
     return true;
@@ -992,7 +999,9 @@ Value& Optimized::CreateTranslateCall(Value& pointer, Instruction& before)
  */
 void Optimized::InstrumentDelayedPHINodes()
 {
-	for (std::map<PHINode*, PHINode*>::iterator it = delayedPHINodes.begin(), itEnd = delayedPHINodes.end(); it != itEnd; ++it)
+    std::map<PHINode*, PHINode*>::iterator it = delayedPHINodes.begin();
+
+    while (it != delayedPHINodes.end())
 	{
 		PHINode& original = *it->first;
 		PHINode& phiShadow = *it->second;
@@ -1005,6 +1014,7 @@ void Optimized::InstrumentDelayedPHINodes()
 			++blockIt;
 		}
 
+        delayedPHINodes.erase(it++);
 	}
 }
 
