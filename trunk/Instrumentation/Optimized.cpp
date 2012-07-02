@@ -3,7 +3,7 @@
 #include <llvm/Support/CommandLine.h>
 #include <llvm/Support/raw_ostream.h>
 
-//#define DEBUG 
+#define DEBUG 
 #ifndef DEBUG
 #define db(x) ;;;
 #else
@@ -30,7 +30,12 @@ bool Optimized::runOnModule(Module& module)
 	dumb = IsDumb;
     continueExecution = Continue;
 
-	Setup(module);
+	analysis = &getAnalysis<AddrLeaks>();
+	
+    if (!dumb && analysis->getLeakedValues().empty())
+        return false;
+
+    Setup(module);
 	HandleSpecialFunctions(); //TODO: Must be first so the code that I added will not be instrumented. This solution is inelegant considering how the rest of the program handles these things
 
 	if (dumb)
@@ -89,7 +94,7 @@ bool Optimized::runOnModule(Module& module)
     }
 
     db("Finished instrumentation");
-   
+
     return true;
 }
 
@@ -422,7 +427,6 @@ void Optimized::HandleMemcpy(MemCpyInst& i)
  */
 void Optimized::Setup(Module& module)
 {
-	analysis = &getAnalysis<AddrLeaks>();
 	this->module = &module;
 	this->context = &module.getContext();
 	targetData = new TargetData(&module);
@@ -646,9 +650,10 @@ void Optimized::Instrument(Instruction& instruction)
 				{
 					Value& shadow = GetShadow(*it->get());
 					GlobalVariable& gv = GetParamGlobal(*it->get()->getType(), argNo);
-					CastInst* cast = CastInst::Create(Instruction::BitCast, &gv, shadow.getType(), "", &instruction);
+                    CastInst *cast = CastInst::Create(Instruction::BitCast, &gv, shadow.getType(), "", &instruction);
 					MarkAsInstrumented(*cast);
-					StoreInst* store = new StoreInst(&shadow, &gv, &instruction); //TODO: isn't there something like StoreInst::Create?
+                    StoreInst* store = new StoreInst(&shadow, cast, &instruction); //TODO: isn't there something like StoreInst::Create?
+
 					MarkAsInstrumented(*store);
 					argNo++;
 				}
