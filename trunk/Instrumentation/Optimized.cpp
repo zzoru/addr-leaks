@@ -35,6 +35,7 @@ using namespace llvm;
 #endif
 
 cl::opt<bool> IsDumb("d", cl::desc("Specify whether to use the static analysis"), cl::desc("is dumb"));
+cl::opt<bool> UsePointerAnalysis("panalysis", cl::desc("Specify whether to use the pointer analysis"), cl::desc("use pointer analysis"));
 cl::opt<bool> Continue("c", cl::desc("Specify whether to continue the execution after detecting a leak"), cl::desc("continue execution"));
 
 class Optimized : public ModulePass
@@ -48,21 +49,27 @@ class Optimized : public ModulePass
 	std::set<std::pair<Function*, Argument*> > callsToBeHandled;
 	std::set<Function*> returnsToBeHandled;
 
+	std::set<Value*> storeValuesThatMustBeInstrumented;
+
+	bool taggedAStore;
+
 	bool dumb;
 	bool continueExecution;
+	bool usePointerAnalysis;
 
 public:
 	static char ID;
 
 	Optimized() : ModulePass(ID)
 	{
-
+		taggedAStore = false;
 	}
 
 	virtual bool runOnModule(Module& module)
 	{
 		dumb = IsDumb;
 		continueExecution = Continue;
+		usePointerAnalysis = UsePointerAnalysis;
 
 		analysis = &getAnalysis<AddrLeaks>();
 
@@ -104,6 +111,8 @@ public:
 				}
 			}
 		}
+		
+		InstrumentStores();
 
 		db("!!!Begin handling param passing");
 		for (std::set<std::pair<Function*, Argument*> >::iterator it = callsToBeHandled.begin(), itEnd = callsToBeHandled.end(); it != itEnd; it++)
@@ -118,14 +127,14 @@ public:
 		}
 
 
-
-
 		HandleSinkCalls();
 
-		while (!delayedPHINodes.empty())
+		while (! delayedPHINodes.empty())
 		{
 			InstrumentDelayedPHINodes();
 		}
+
+
 
 		db("Finished instrumentation");
 
@@ -133,7 +142,43 @@ public:
 	}
 
 private:
-	std::vector<std::pair<Instruction*, std::vector<Value*> > > getPrintfLeaks();
+	void InstrumentStore(StoreInst& store)
+	{
+		Value& shadowPtr = CreateTranslateCall(*store.getPointerOperand(), store);
+		Value& shadow = GetShadow(*store.getValueOperand());
+		StoreInst* shadowStore = new StoreInst(&shadow, &shadowPtr, &store); //TODO: Is there any way to do something like Store::Create?
+		MarkAsInstrumented(*shadowStore);
+		MarkAsInstrumented(store);
+	}
+
+	void InstrumentStores()
+	{
+		while (taggedAStore)
+		{
+			taggedAStore = false; 
+
+			for (Module::iterator funcIt = module->begin(), funcItEnd = module->end(); funcIt != funcItEnd; funcIt++)
+			{
+				for (inst_iterator it = inst_begin(*funcIt), itEnd = inst_end(*funcIt); it != itEnd; it++)
+				{
+					StoreInst* store = dyn_cast<StoreInst>(&*it);
+
+					if (store && ! AlreadyInstrumented(*store))
+					{
+						Value* v = store->getValueOperand();
+						Instruction* i = dyn_cast<Instruction>(v);
+
+						if (! usePointerAnalysis || (i && HasMetadata(*i, "must-instrument-store")) || (! i && storeValuesThatMustBeInstrumented.find(v) != storeValuesThatMustBeInstrumented.end()))
+						{
+							InstrumentStore(*store);
+						}
+					}
+
+				}
+			}
+		}
+	}
+
 	void HandleSinkCalls()
 	{
 		if (! dumb)
@@ -255,9 +300,9 @@ private:
 
 	void HandlePrintf(CallSite* cs)
 	{
-		db("Handling printf")
+		//		db("Handling printf")
 
-									CallSite::arg_iterator AI = cs->arg_begin();
+		CallSite::arg_iterator AI = cs->arg_begin();
 
 		std::vector<bool> vaza, isString;
 		Value *fmt = *AI;
@@ -372,7 +417,11 @@ private:
 			}
 		}
 	}
-	void HandleUses(Value& v);
+	//	void HandleUses(Value& v)
+	//	{
+	//
+	//	}
+
 	void HandleSpecialFunctions()
 	{
 		//TODO: Maybe using a pointer analysis would be a good thing
@@ -387,15 +436,15 @@ private:
 					{
 						HandleMemcpy(*mcy);
 					}
-					else if ((store = dyn_cast<StoreInst>(&*it)) && ! AlreadyInstrumented(*store))
-					{
-						db("Handling " << *store);
-						Value& shadowPtr = CreateTranslateCall(*store->getPointerOperand(), *store);
-						Value& shadow = GetShadow(*store->getValueOperand());
-						StoreInst* shadowStore = new StoreInst(&shadow, &shadowPtr, store); //TODO: Is there any way to do something like Store::Create?
-						MarkAsInstrumented(*shadowStore);
-
-					}
+					//					else if ((store = dyn_cast<StoreInst>(&*it)) && ! AlreadyInstrumented(*store))
+					//					{
+					//						db("Handling " << *store);
+					//						Value& shadowPtr = CreateTranslateCall(*store->getPointerOperand(), *store);
+					//						Value& shadow = GetShadow(*store->getValueOperand());
+					//						StoreInst* shadowStore = new StoreInst(&shadow, &shadowPtr, store); //TODO: Is there any way to do something like Store::Create?
+					//						MarkAsInstrumented(*shadowStore);
+					//
+					//					}
 				}
 			}
 		}
@@ -416,6 +465,52 @@ private:
 		args.push_back(i.getVolatileCst());
 		CallInst* call = CallInst::Create(f, args, "", &i);
 		MarkAsInstrumented(*call);
+	}
+
+	std::vector<Value*> GetPointsToSet(Value& v)
+									{
+		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
+
+		int i = analysis->Value2Int(&v);
+		std::set<int>  intSet = pointerAnalysis->pointsTo(i);
+
+		std::vector<Value*> valuesSet;
+
+		for (std::set<int> ::iterator it = intSet.begin(), itEnd = intSet.end(); it != itEnd; ++it)
+		{
+			valuesSet.push_back(analysis->Int2Value(*it));
+		}
+
+		return valuesSet;
+									}
+
+
+	void HandleStoresIn(Value& pointer)
+	{
+		std::vector<Value*> pointsTo = GetPointsToSet(pointer);
+
+		for (std::vector<Value*>::iterator it = pointsTo.begin(), itEnd = pointsTo.end(); it != itEnd; ++it)
+		{
+			Instruction* i = dyn_cast<Instruction>(*it);
+
+			if (i)
+			{
+				if (! HasMetadata(*i, "must-instrument-store"))
+				{
+					AddMetadata(*i, "must-instrument-store");
+					taggedAStore = true;
+
+				}
+			}
+			else
+			{
+				if (storeValuesThatMustBeInstrumented.find(*it) == storeValuesThatMustBeInstrumented.end())
+				{
+					storeValuesThatMustBeInstrumented.insert(*it);
+					taggedAStore = true;
+				}
+			}
+		}
 	}
 
 	void Setup(Module& module)
@@ -537,6 +632,7 @@ private:
 			Value* pointer = load.getPointerOperand();
 			Value& pointerShadowMemory = CreateTranslateCall(*pointer, load);
 			newShadow = new LoadInst(&pointerShadowMemory, "", &instruction);
+			HandleStoresIn(*pointer);
 			break;
 		}
 		case Instruction::GetElementPtr:
@@ -860,10 +956,11 @@ private:
 	}
 	void AddShadow(Instruction& i, Value& shadow)
 	{
-		std::vector<Value*> vals;
-		vals.push_back(&shadow);
-		MDNode* node = MDNode::get(*context, vals);
-		i.setMetadata("shadow", node);
+		AddMetadata(i, "shadow", &shadow);
+		//		std::vector<Value*> vals;
+		//		vals.push_back(&shadow);
+		//		MDNode* node = MDNode::get(*context, vals);
+		//		i.setMetadata("shadow", node);
 	}
 	Value& GetShadow(Value& value)
 	{
@@ -876,16 +973,17 @@ private:
 		{
 			if (AlreadyInstrumented(*i))
 			{
-				MDNode* node = i->getMetadata("shadow");
-
-				if (node == 0)
-				{
-					db("ERROR: " << value << "\n");
-				}
-
-				assert(node != 0);
-
-				return *node->getOperand(0); //TODO: not sure if this works
+				return *GetMetadata(*i, "shadow");
+				//				MDNode* node = i->getMetadata("shadow");
+				//
+				//				if (node == 0)
+				//				{
+				//					db("ERROR: " << value << "\n");
+				//				}
+				//
+				//				assert(node != 0);
+				//
+				//				return *node->getOperand(0); //TODO: not sure if this works
 			}
 
 			Instrument(*i);
@@ -1004,15 +1102,45 @@ private:
 	}
 	bool AlreadyInstrumented(Instruction& i)
 	{
-		MDNode* node = i.getMetadata("instrumented");
+		return HasMetadata(i, "instrumented");
+		//		MDNode* node = i.getMetadata("instrumented");
+		//		return node != 0;
+	}
+
+	void AddMetadata(Instruction& i, std::string tag, Value* v = 0)
+	{
+		std::vector<Value*> vals;
+
+		if (v)
+		{
+			vals.push_back(v);
+		}
+
+		MDNode* node;
+		node = MDNode::get(*context, vals);
+		i.setMetadata(tag, node);
+	}
+
+	bool HasMetadata(Instruction& i, std::string tag)
+	{
+		MDNode* node = i.getMetadata(tag);
 		return node != 0;
 	}
+
+	Value* GetMetadata(Instruction& i, std::string tag)
+	{
+		MDNode* node = i.getMetadata(tag);
+		assert(node != 0);
+		return node->getOperand(0);
+	}
+
 	void MarkAsInstrumented(Instruction& i)
 	{
-		db("Marked as instrumented: " << i);
-		std::vector<Value*> vals;
-		MDNode* node = MDNode::get(*context, vals);
-		i.setMetadata("instrumented", node);
+		AddMetadata(i, "instrumented");
+		//		db("Marked as instrumented: " << i);
+		//		std::vector<Value*> vals;
+		//		MDNode* node = MDNode::get(*context, vals);
+		//		i.setMetadata("instrumented", node);
 	}
 };
 
