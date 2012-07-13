@@ -663,7 +663,7 @@ bool AddrLeaks::runOnModule(Module &M) {
 				if (ConstantExpr *CE = dyn_cast<ConstantExpr>(fmt)) {
 					if (GlobalVariable *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
 						ConstantDataArray *CA;
-						if (CA = dyn_cast<ConstantDataArray>(GV->getInitializer())) {
+						if ((CA = dyn_cast<ConstantDataArray>(GV->getInitializer()))) {
 							if (CA->isString()) {
 								formatString = CA->getAsString();
 								hasFormat = true;
