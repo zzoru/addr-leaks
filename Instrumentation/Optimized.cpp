@@ -62,14 +62,17 @@ public:
 
 	Optimized() : ModulePass(ID)
 	{
-		taggedAStore = false;
+		
 	}
 
 	virtual bool runOnModule(Module& module)
 	{
+		taggedAStore = false;
+		
 		dumb = IsDumb;
 		continueExecution = Continue;
 		usePointerAnalysis = UsePointerAnalysis;
+		db("usePointerAnalysis = " << usePointerAnalysis << "\n");
 
 		analysis = &getAnalysis<AddrLeaks>();
 
