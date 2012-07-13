@@ -62,13 +62,13 @@ public:
 
 	Optimized() : ModulePass(ID)
 	{
-		
+
 	}
 
 	virtual bool runOnModule(Module& module)
 	{
 		taggedAStore = false;
-		
+
 		dumb = IsDumb;
 		continueExecution = Continue;
 		usePointerAnalysis = UsePointerAnalysis;
@@ -114,7 +114,7 @@ public:
 				}
 			}
 		}
-		
+
 		InstrumentStores();
 
 		db("!!!Begin handling param passing");
@@ -471,7 +471,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-									{
+													{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -485,7 +485,7 @@ private:
 		}
 
 		return valuesSet;
-									}
+													}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -594,6 +594,12 @@ private:
 
 		switch (instruction.getOpcode())
 		{
+		case Instruction::LandingPad:
+		{
+			LandingPadInst& landingPad = cast<LandingPadInst>(instruction);
+			newShadow = &GetNullValue(*landingPad.getType());
+			break;
+		}
 		case Instruction::ExtractValue:
 		{
 			ExtractValueInst& extract = cast<ExtractValueInst>(instruction);
@@ -1092,10 +1098,19 @@ private:
 		if (retType->isPointerTy()) return &GetAllOnesValue(*retType);
 		else return &GetNullValue(*retType);
 	}
-	Instruction* GetNextInstruction(Instruction& i)
+	Instruction* Optimized::GetNextInstruction(Instruction& i)
 	{
-		//TODO: This may not make sense since a instruction might have more than one sucessor or be the last instruction
 		BasicBlock::iterator it(&i);
+
+		if (TerminatorInst *ti = dyn_cast<TerminatorInst>(it))
+		{
+			if (InvokeInst *ii = dyn_cast<InvokeInst>(ti))
+			{
+				BasicBlock *bb = ii->getNormalDest();
+				return bb->getFirstInsertionPt();
+			}
+		}
+
 		it++;
 		return it;
 	}
