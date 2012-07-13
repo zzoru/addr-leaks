@@ -510,6 +510,12 @@ void Optimized::Instrument(Instruction& instruction)
 
 	switch (instruction.getOpcode())
 	{
+    case Instruction::LandingPad:
+    {
+        LandingPadInst& landingPad = cast<LandingPadInst>(instruction);
+		newShadow = &GetNullValue(*landingPad.getType());
+        break;
+    }
 	case Instruction::ExtractValue:
 	{
 		ExtractValueInst& extract = cast<ExtractValueInst>(instruction);
