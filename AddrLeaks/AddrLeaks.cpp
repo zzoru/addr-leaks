@@ -104,7 +104,9 @@ private:
 	std::map<Value*, int> value2int;
 	std::map<int, Value*> int2value;
 
-	int Value2Int(Value* v);
+
+	
+	
 	bool dfs(Value* v, nodeType t);
 	bool dfs(int v, nodeType t);
 	int countBuggyPathSize(Value* v, nodeType t);
@@ -125,9 +127,17 @@ private:
 	void handleAlloca(Instruction *I);
 	void handleNestedStructs(const Type *StTy, int parent);
 public:
+	int Value2Int(Value* v);
+	Value* Int2Value(int);
+	PointerAnalysis* getPointerAnalysis();
 	std::set<Value*> getLeakedValues();
 	std::vector<std::pair<Instruction*, std::vector<Value*> > > getPrintfLeaks();
 };
+}
+
+PointerAnalysis* AddrLeaks::getPointerAnalysis()
+{
+	return pointerAnalysis;
 }
 
 int AddrLeaks::getNewMemoryBlock() {
@@ -469,6 +479,10 @@ void AddrLeaks::matchFormalWithActualParameters(Function &F) {
 	}
 }
 
+Value* AddrLeaks::Int2Value(int x)
+{
+	return int2value[x];
+}
 
 int AddrLeaks::Value2Int(Value *v) {
 	int n;
