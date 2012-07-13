@@ -664,7 +664,7 @@ void Optimized::Instrument(Instruction& instruction)
 			MarkAsInstrumented(*cast);
 			Instruction* next = GetNextInstruction(instruction);
 			assert(next != 0);
-			newShadow = new LoadInst(cast, "", next);
+            newShadow = new LoadInst(cast, "", next);
 		}
 		else
 		{
@@ -1082,17 +1082,25 @@ bool Optimized::AlreadyInstrumented(Instruction& i)
 
 void Optimized::MarkAsInstrumented(Instruction& i)
 {
-	db("Marked as instrumented: " << i);
+    db("Marked as instrumented: " << i);
 	std::vector<Value*> vals;
 	MDNode* node = MDNode::get(*context, vals);
 	i.setMetadata("instrumented", node);
 }
 
-// TODO: check if we can remove this code.
 Instruction* Optimized::GetNextInstruction(Instruction& i)
 {
-	//TODO: This may not make sense since a instruction might have more than one sucessor or be the last instruction
-	BasicBlock::iterator it(&i);
-	it++;
-	return it;
+    BasicBlock::iterator it(&i);
+    
+    if (TerminatorInst *ti = dyn_cast<TerminatorInst>(it))
+    {
+        if (InvokeInst *ii = dyn_cast<InvokeInst>(ti))
+        {
+            BasicBlock *bb = ii->getNormalDest();
+            return bb->getFirstInsertionPt();
+        }
+    }
+    
+    it++;
+    return it;
 }
