@@ -28,14 +28,14 @@ Optimized::Optimized() : ModulePass(ID)
 bool Optimized::runOnModule(Module& module)
 {
 	dumb = IsDumb;
-    continueExecution = Continue;
+	continueExecution = Continue;
 
 	analysis = &getAnalysis<AddrLeaks>();
-	
-    if (!dumb && analysis->getLeakedValues().empty())
-        return false;
 
-    Setup(module);
+	if (!dumb && analysis->getLeakedValues().empty())
+		return false;
+
+	Setup(module);
 	HandleSpecialFunctions(); //TODO: Must be first so the code that I added will not be instrumented. This solution is inelegant considering how the rest of the program handles these things
 
 	if (dumb)
@@ -76,26 +76,26 @@ bool Optimized::runOnModule(Module& module)
 	{
 		HandleParamPassingTo(*it->first, *it->second);
 	}
-	
+
 	db("Begin handling returns");
 	for (std::set<Function*>::iterator it = returnsToBeHandled.begin(), itEnd = returnsToBeHandled.end(); it != itEnd; it++)
 	{
 		HandleReturns(**it);
 	}
-	
-	
+
+
 
 
 	HandleSinkCalls();
 
-    while (!delayedPHINodes.empty())
-    {
-        InstrumentDelayedPHINodes();
-    }
+	while (!delayedPHINodes.empty())
+	{
+		InstrumentDelayedPHINodes();
+	}
 
-    db("Finished instrumentation");
+	db("Finished instrumentation");
 
-    return true;
+	return true;
 }
 
 /*********************************************************************************************************************************************************************************
@@ -105,8 +105,8 @@ bool Optimized::runOnModule(Module& module)
 void Optimized::AddStringAssertCode(Value& shadow, Instruction& sinkCall)
 {	
 	Type* iN = Type::getIntNTy(*context, GetSize(*shadow.getType()));
-    LoadInst* load = new LoadInst(&shadow, "", &sinkCall);
-	
+	LoadInst* load = new LoadInst(&shadow, "", &sinkCall);
+
 	MarkAsInstrumented(*load);
 
 	ICmpInst* cmp = new ICmpInst(&sinkCall, CmpInst::ICMP_NE, load, &GetNullValue(*iN), "");
@@ -119,10 +119,10 @@ void Optimized::AddStringAssertCode(Value& shadow, Instruction& sinkCall)
 
 void Optimized::AddAssertCode(Value& shadow, Instruction& sinkCall)
 {	
-	
+
 	Type* iN = Type::getIntNTy(*context, GetSize(*shadow.getType()));
 	CastInst* cast; //CastInst::Create(Instruction::BitCast, &shadow, iN, "", &sinkCall);
-	
+
 	if (shadow.getType()->isPointerTy())
 	{
 		cast = CastInst::Create(Instruction::PtrToInt, &shadow, iN, "", &sinkCall);
@@ -131,8 +131,8 @@ void Optimized::AddAssertCode(Value& shadow, Instruction& sinkCall)
 	{
 		cast = CastInst::Create(Instruction::BitCast, &shadow, iN, "", &sinkCall);
 	}
-	
-	
+
+
 	MarkAsInstrumented(*cast);
 
 	ICmpInst* cmp = new ICmpInst(&sinkCall, CmpInst::ICMP_NE, cast, &GetNullValue(*iN), "");
@@ -173,8 +173,8 @@ void Optimized::HandleSinkCalls()
 		{
 			if (dyn_cast<CallInst>(*it) || dyn_cast<InvokeInst>(*it))
 			{
-                CallSite cs(*it);
-                HandlePrintf(&cs);
+				CallSite cs(*it);
+				HandlePrintf(&cs);
 			}
 		}
 	}
@@ -191,7 +191,7 @@ void Optimized::HandlePrintf(CallSite *cs)
 {
 	db("Handling printf")
 
-	CallSite::arg_iterator AI = cs->arg_begin();
+			CallSite::arg_iterator AI = cs->arg_begin();
 
 	std::vector<bool> vaza, isString;
 	Value *fmt = *AI;
@@ -200,7 +200,8 @@ void Optimized::HandlePrintf(CallSite *cs)
 
 	if (ConstantExpr *CE = dyn_cast<ConstantExpr>(fmt)) {
 		if (GlobalVariable *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
-			if (ConstantArray *CA = dyn_cast<ConstantArray>(GV->getInitializer())) {
+			ConstantDataArray *CA;
+			if (CA = dyn_cast<ConstantDataArray>(GV->getInitializer())) {
 				if (CA->isString()) {
 					formatString = CA->getAsString();
 					hasFormat = true;
@@ -290,17 +291,17 @@ void Optimized::HandlePrintf(CallSite *cs)
 		{
 			if (isString[i])
 			{
-                /*
+				/*
 				Value* arg = cs->getArgument(i + 1);
                 Value &src = CreateTranslateCall(*arg, *cs->getInstruction());
                 AddStringAssertCode(src, *cs->getInstruction());
-                */
+				 */
 			}
 			else
 			{
 				Value* arg = cs->getArgument(i + 1);
-                Value& shadow = GetShadow(*arg);
-                AddAssertCode(shadow, *cs->getInstruction());
+				Value& shadow = GetShadow(*arg);
+				AddAssertCode(shadow, *cs->getInstruction());
 			}
 		}
 	}
@@ -486,13 +487,13 @@ void Optimized::Instrument(Instruction& instruction)
 			}
 
 			Type* oldType = shadow1.getType();
-			
-			
-			
+
+
+
 			CastInst* convertedShadow1 = CastInst::Create(Instruction::BitCast, &shadow1, newType, "", &instruction);
 			CastInst* convertedShadow2 = CastInst::Create(Instruction::BitCast, &shadow2, newType, "", &instruction);
-			
-			
+
+
 			Instruction* orOp = BinaryOperator::Create(Instruction::Or, convertedShadow1, convertedShadow2, "", &instruction);
 			newShadow = CastInst::Create(Instruction::BitCast, orOp, oldType, "", &instruction);
 
@@ -583,16 +584,16 @@ void Optimized::Instrument(Instruction& instruction)
         //Type* iNType = Type::getIntNTy(*context, targetData->getPointerSizeInBits());
         //CastInst& ci = cast<CastInst>(instruction);
         //Value *pointer = ci.getOperand(0);
-        
+
         Type* iNType = Type::getInt32Ty(*context);
         newShadow = &GetAllOnesValue(*iNType);
         break;
     }
-    */
+	 */
 	case Instruction::PtrToInt:
-    case Instruction::FPExt:
-    case Instruction::FPTrunc:
-    case Instruction::BitCast:
+	case Instruction::FPExt:
+	case Instruction::FPTrunc:
+	case Instruction::BitCast:
 	case Instruction::Trunc:    
 	case Instruction::ZExt:     
 	case Instruction::SExt:     
@@ -602,16 +603,16 @@ void Optimized::Instrument(Instruction& instruction)
 	case Instruction::UIToFP:
 	case Instruction::FPToUI:
 	{
-        CastInst& ci = cast<CastInst>(instruction);
-        Value *v = ci.getOperand(0);
+		CastInst& ci = cast<CastInst>(instruction);
+		Value *v = ci.getOperand(0);
 
 		newShadow = CastInst::Create(ci.getOpcode(), &GetShadow(*v), ci.getDestTy(), "", &instruction);
-        break;
-        /*
+		break;
+		/*
 		CastInst& ci = cast<CastInst>(instruction);
 		newShadow = CastInst::Create(ci.getOpcode(), ci.getOperand(0), ci.getDestTy(), "", &instruction);
 		break;
-        */
+		 */
 	}
 	case Instruction::ICmp:
 	case Instruction::FCmp:
@@ -656,9 +657,9 @@ void Optimized::Instrument(Instruction& instruction)
 				{
 					Value& shadow = GetShadow(*it->get());
 					GlobalVariable& gv = GetParamGlobal(*it->get()->getType(), argNo);
-                    CastInst *cast = CastInst::Create(Instruction::BitCast, &gv, shadow.getType(), "", &instruction);
+					CastInst *cast = CastInst::Create(Instruction::BitCast, &gv, shadow.getType(), "", &instruction);
 					MarkAsInstrumented(*cast);
-                    StoreInst* store = new StoreInst(&shadow, cast, &instruction); //TODO: isn't there something like StoreInst::Create?
+					StoreInst* store = new StoreInst(&shadow, cast, &instruction); //TODO: isn't there something like StoreInst::Create?
 
 					MarkAsInstrumented(*store);
 					argNo++;
@@ -728,22 +729,22 @@ Function& Optimized::GetAssertZeroFunction()
 			"assertZero",
 			module);
 
-    Function *quitProgram;
+	Function *quitProgram;
 
-    if (continueExecution)
-    {
-	    quitProgram = Function::Create(FunctionType::get(Type::getVoidTy(*context), false),
-		    	GlobalValue::ExternalLinkage,
-			    "myAbort2",
-			    module);
-    }
-    else
-    {
-         quitProgram = Function::Create(FunctionType::get(Type::getVoidTy(*context), false),
-		    	GlobalValue::ExternalLinkage,
-			    "myAbort",
-			    module);
-    }
+	if (continueExecution)
+	{
+		quitProgram = Function::Create(FunctionType::get(Type::getVoidTy(*context), false),
+				GlobalValue::ExternalLinkage,
+				"myAbort2",
+				module);
+	}
+	else
+	{
+		quitProgram = Function::Create(FunctionType::get(Type::getVoidTy(*context), false),
+				GlobalValue::ExternalLinkage,
+				"myAbort",
+				module);
+	}
 
 	BasicBlock* entry = BasicBlock::Create(*context, "entry", assertZero);
 	Function::ArgumentListType& argList = assertZero->getArgumentList();
@@ -962,10 +963,10 @@ Value& Optimized::GetShadow(Value& value)
 		{
 			return GetAllOnesValue(*c->getType()); 
 		}
-        else if (dyn_cast<ConstantExpr>(&value))
-        {
-            return GetAllOnesValue(*c->getType());
-        }
+		else if (dyn_cast<ConstantExpr>(&value))
+		{
+			return GetAllOnesValue(*c->getType());
+		}
 		else
 		{
 			return GetNullValue(*c->getType());
@@ -1008,9 +1009,9 @@ Value& Optimized::CreateTranslateCall(Value& pointer, Instruction& before)
  */
 void Optimized::InstrumentDelayedPHINodes()
 {
-    std::map<PHINode*, PHINode*>::iterator it = delayedPHINodes.begin();
+	std::map<PHINode*, PHINode*>::iterator it = delayedPHINodes.begin();
 
-    while (it != delayedPHINodes.end())
+	while (it != delayedPHINodes.end())
 	{
 		PHINode& original = *it->first;
 		PHINode& phiShadow = *it->second;
@@ -1023,7 +1024,7 @@ void Optimized::InstrumentDelayedPHINodes()
 			++blockIt;
 		}
 
-        delayedPHINodes.erase(it++);
+		delayedPHINodes.erase(it++);
 	}
 }
 
