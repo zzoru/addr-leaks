@@ -494,7 +494,9 @@ private:
 
 		for (std::vector<Value*>::iterator it = pointsTo.begin(), itEnd = pointsTo.end(); it != itEnd; ++it)
 		{
-			Instruction* i = dyn_cast<Instruction>(*it);
+            if (!(*it)) continue;
+            
+            Instruction* i = dyn_cast<Instruction>(*it);
 
 			if (i)
 			{
