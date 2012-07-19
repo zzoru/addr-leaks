@@ -545,8 +545,8 @@ private:
 		MarkAsInstrumented(instruction);
 
 		Value* newShadow = 0;
-
-		if (instruction.isBinaryOp())
+		
+        if (instruction.isBinaryOp())
 		{
 			BinaryOperator& bin = cast<BinaryOperator>(instruction);
 			Value& op1 = *bin.getOperand(0);
@@ -763,6 +763,7 @@ private:
 			{
 				newShadow = HandleExternFunctionCall(cs);
 			}
+            break;
 		}
 		default:
 		{
