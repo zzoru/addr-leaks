@@ -164,7 +164,7 @@ private:
 			{
 				for (inst_iterator it = inst_begin(*funcIt), itEnd = inst_end(*funcIt); it != itEnd; it++)
 				{
-					StoreInst* store = dyn_cast<StoreInst>(&*it);
+                    StoreInst* store = dyn_cast<StoreInst>(&*it);
 
 					if (store && ! AlreadyInstrumented(*store))
 					{
@@ -494,27 +494,24 @@ private:
 
 		for (std::vector<Value*>::iterator it = pointsTo.begin(), itEnd = pointsTo.end(); it != itEnd; ++it)
 		{
-            if (!(*it)) continue;
-            
-            Instruction* i = dyn_cast<Instruction>(*it);
-
-			if (i)
-			{
-				if (! HasMetadata(*i, "must-instrument-store"))
-				{
-					AddMetadata(*i, "must-instrument-store");
-					taggedAStore = true;
-
-				}
-			}
-			else
-			{
-				if (storeValuesThatMustBeInstrumented.find(*it) == storeValuesThatMustBeInstrumented.end())
+            if (!(*it)) {
+                if (storeValuesThatMustBeInstrumented.find(*it) == storeValuesThatMustBeInstrumented.end())
 				{
 					storeValuesThatMustBeInstrumented.insert(*it);
 					taggedAStore = true;
 				}
-			}
+            }
+            else
+            {
+                Instruction* i = dyn_cast<Instruction>(*it);
+                
+                if (i && ! HasMetadata(*i, "must-instrument-store"))
+                {
+                    AddMetadata(*i, "must-instrument-store");
+                    taggedAStore = true;
+
+                }
+            }
 		}
 	}
 
@@ -535,6 +532,8 @@ private:
 		static char ident[100] = "";
 		static int i = 0;
 		ident[i] = 0;
+
+        if (isa<StoreInst>(&instruction)) return;
 
 		db(ident << "Instrumenting " << instruction);
 		ident[i] = ' ';
@@ -1157,7 +1156,7 @@ private:
 	void MarkAsInstrumented(Instruction& i)
 	{
 		AddMetadata(i, "instrumented");
-		//		db("Marked as instrumented: " << i);
+				db("Marked as instrumented: " << i);
 		//		std::vector<Value*> vals;
 		//		MDNode* node = MDNode::get(*context, vals);
 		//		i.setMetadata("instrumented", node);
