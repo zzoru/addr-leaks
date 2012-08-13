@@ -129,7 +129,6 @@ public:
 			HandleReturns(**it);
 		}
 
-
 		HandleSinkCalls();
 
 		while (! delayedPHINodes.empty())
@@ -164,7 +163,7 @@ private:
 			{
 				for (inst_iterator it = inst_begin(*funcIt), itEnd = inst_end(*funcIt); it != itEnd; it++)
 				{
-                    StoreInst* store = dyn_cast<StoreInst>(&*it);
+					StoreInst* store = dyn_cast<StoreInst>(&*it);
 
 					if (store && ! AlreadyInstrumented(*store))
 					{
@@ -193,11 +192,10 @@ private:
 				Instruction* i = it->first;
 				std::vector<Value*> vs = it->second;
 
-
 				for (std::vector<Value*>::iterator vIt = vs.begin(), vEnd = vs.end(); vIt != vEnd; vIt++)
 				{
-					Value& shadow = GetShadow(**vIt);
-					AddAssertCode(shadow, *i);
+					CallSite cs(i);
+					HandlePrintf(&cs, *vIt);
 				}
 			}
 		}
@@ -212,7 +210,7 @@ private:
 				if (dyn_cast<CallInst>(*it) || dyn_cast<InvokeInst>(*it))
 				{
 					CallSite cs(*it);
-					HandlePrintf(&cs);
+					HandlePrintf(&cs, 0);
 				}
 			}
 		}
@@ -243,18 +241,12 @@ private:
 		MarkAsInstrumented(*call);
 	}
 
-	void AddStringAssertCode(Value& shadow, Instruction& sinkCall)
+	void AddStringAssertCode(Value& string, Instruction& sinkCall)
 	{
-		Type* iN = Type::getIntNTy(*context, GetSize(*shadow.getType()));
-		LoadInst* load = new LoadInst(&shadow, "", &sinkCall);
-
-		MarkAsInstrumented(*load);
-
-		ICmpInst* cmp = new ICmpInst(&sinkCall, CmpInst::ICMP_NE, load, &GetNullValue(*iN), "");
-		Function& assertZero = GetAssertZeroFunction();
+		Function& assertZeroStringFunction = GetAssertZeroStringFunction();
 		std::vector<Value*> args;
-		args.push_back(cmp);
-		CallInst* call = CallInst::Create(&assertZero, args, "", &sinkCall);
+		args.push_back(&string);
+		CallInst* call = CallInst::Create(&assertZeroStringFunction, args, "", &sinkCall);
 		MarkAsInstrumented(*call);
 	}
 
@@ -301,10 +293,8 @@ private:
 		}
 	}
 
-	void HandlePrintf(CallSite* cs)
+	void HandlePrintf(CallSite* cs, Value* v)
 	{
-		//		db("Handling printf")
-
 		CallSite::arg_iterator AI = cs->arg_begin();
 
 		std::vector<bool> vaza, isString;
@@ -401,15 +391,13 @@ private:
 
 		for (int i = 0; i < vaza.size(); i++)
 		{
-			if (vaza[i])
+			if (vaza[i] && (cs->getArgument(i + 1) == v || v == 0))
 			{
 				if (isString[i])
 				{
-					/*
-						Value* arg = cs->getArgument(i + 1);
-		                Value &src = CreateTranslateCall(*arg, *cs->getInstruction());
-		                AddStringAssertCode(src, *cs->getInstruction());
-					 */
+					Value* arg = cs->getArgument(i + 1);
+					AddStringAssertCode(*arg, *cs->getInstruction());
+
 				}
 				else
 				{
@@ -420,14 +408,9 @@ private:
 			}
 		}
 	}
-	//	void HandleUses(Value& v)
-	//	{
-	//
-	//	}
 
 	void HandleSpecialFunctions()
 	{
-		//TODO: Maybe using a pointer analysis would be a good thing
 		for (Module::iterator fIt = module->begin(), fItEnd = module->end(); fIt != fItEnd; ++fIt) {
 			if (! fIt->isDeclaration()) {
 				for (inst_iterator it = inst_begin(fIt), itEnd = inst_end(fIt); it != itEnd; ++it)
@@ -439,15 +422,6 @@ private:
 					{
 						HandleMemcpy(*mcy);
 					}
-					//					else if ((store = dyn_cast<StoreInst>(&*it)) && ! AlreadyInstrumented(*store))
-					//					{
-					//						db("Handling " << *store);
-					//						Value& shadowPtr = CreateTranslateCall(*store->getPointerOperand(), *store);
-					//						Value& shadow = GetShadow(*store->getValueOperand());
-					//						StoreInst* shadowStore = new StoreInst(&shadow, &shadowPtr, store); //TODO: Is there any way to do something like Store::Create?
-					//						MarkAsInstrumented(*shadowStore);
-					//
-					//					}
 				}
 			}
 		}
@@ -471,7 +445,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-													{
+																			{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -485,7 +459,7 @@ private:
 		}
 
 		return valuesSet;
-													}
+																			}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -494,24 +468,24 @@ private:
 
 		for (std::vector<Value*>::iterator it = pointsTo.begin(), itEnd = pointsTo.end(); it != itEnd; ++it)
 		{
-            if (!(*it)) {
-                if (storeValuesThatMustBeInstrumented.find(*it) == storeValuesThatMustBeInstrumented.end())
+			if (!(*it)) {
+				if (storeValuesThatMustBeInstrumented.find(*it) == storeValuesThatMustBeInstrumented.end())
 				{
 					storeValuesThatMustBeInstrumented.insert(*it);
 					taggedAStore = true;
 				}
-            }
-            else
-            {
-                Instruction* i = dyn_cast<Instruction>(*it);
-                
-                if (i && ! HasMetadata(*i, "must-instrument-store"))
-                {
-                    AddMetadata(*i, "must-instrument-store");
-                    taggedAStore = true;
+			}
+			else
+			{
+				Instruction* i = dyn_cast<Instruction>(*it);
 
-                }
-            }
+				if (i && ! HasMetadata(*i, "must-instrument-store"))
+				{
+					AddMetadata(*i, "must-instrument-store");
+					taggedAStore = true;
+
+				}
+			}
 		}
 	}
 
@@ -533,7 +507,7 @@ private:
 		static int i = 0;
 		ident[i] = 0;
 
-        if (isa<StoreInst>(&instruction)) return;
+		if (isa<StoreInst>(&instruction)) return;
 
 		db(ident << "Instrumenting " << instruction);
 		ident[i] = ' ';
@@ -545,8 +519,8 @@ private:
 		MarkAsInstrumented(instruction);
 
 		Value* newShadow = 0;
-		
-        if (instruction.isBinaryOp())
+
+		if (instruction.isBinaryOp())
 		{
 			BinaryOperator& bin = cast<BinaryOperator>(instruction);
 			Value& op1 = *bin.getOperand(0);
@@ -763,7 +737,7 @@ private:
 			{
 				newShadow = HandleExternFunctionCall(cs);
 			}
-            break;
+			break;
 		}
 		default:
 		{
@@ -793,6 +767,23 @@ private:
 		ident[i] = 0;
 		db(ident << "Finished instrumenting " << instruction);
 	}
+
+	Function& GetAssertZeroStringFunction()
+	{
+		static Function* assertZeroString = 0;
+		if (assertZeroString != 0) return *assertZeroString;
+
+		std::vector<Type*> assertParams;
+		assertParams.push_back(Type::getInt8PtrTy(*context));
+		assertZeroString = Function::Create(FunctionType::get(Type::getVoidTy(*context),
+				assertParams,
+				false),
+				GlobalValue::ExternalLinkage,
+				"assertZeroString",
+				module);
+		return *assertZeroString;
+	}
+
 	Function& GetAssertZeroFunction()
 	{
 		static Function* assertZero = 0;
@@ -1100,7 +1091,7 @@ private:
 		if (retType->isPointerTy()) return &GetAllOnesValue(*retType);
 		else return &GetNullValue(*retType);
 	}
-	Instruction* Optimized::GetNextInstruction(Instruction& i)
+	Instruction* GetNextInstruction(Instruction& i)
 	{
 		BasicBlock::iterator it(&i);
 
@@ -1157,7 +1148,7 @@ private:
 	void MarkAsInstrumented(Instruction& i)
 	{
 		AddMetadata(i, "instrumented");
-				db("Marked as instrumented: " << i);
+		db("Marked as instrumented: " << i);
 		//		std::vector<Value*> vals;
 		//		MDNode* node = MDNode::get(*context, vals);
 		//		i.setMetadata("instrumented", node);

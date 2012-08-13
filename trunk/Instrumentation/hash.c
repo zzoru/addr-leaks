@@ -8,6 +8,8 @@ unsigned long MAX_MEMORY = 1UL << 47;
 
 void* begin;
 
+
+
 void createShadowMemory()
 {
 	begin = mmap(0, MAX_MEMORY / 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, 0, 0); 
@@ -40,4 +42,20 @@ void myAbort()
 void myAbort2()
 {
 	printf("An address was leaked\n");
+}
+
+void assertZeroString(char* str)
+{
+	char* shadowPtr = translate(str);
+
+	while (*str != 0)
+	{
+		if (*shadowPtr != 0) {
+			myAbort();
+			return;
+		}
+		
+		shadowPtr++;
+		str++;
+	}
 }
