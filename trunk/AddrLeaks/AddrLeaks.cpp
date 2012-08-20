@@ -1702,6 +1702,21 @@ void AddrLeaks::buildMyGraph(Function &F) {
 				setFunction(F, I);
 				break;
 			}
+            case Instruction::VAArg:
+            {
+                Value *v = I->getOperand(0);
+
+				graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(v, VALUE));
+				vertices1.insert(std::make_pair(I, VALUE));
+				vertices1.insert(std::make_pair(v, VALUE));
+
+				sources.insert(std::make_pair(I, VALUE));
+
+				setFunction(F, I);
+				setFunction(F, v);
+
+                break;
+            }
 			default:
 			{
 				if (isa<CallInst>(I)) {
