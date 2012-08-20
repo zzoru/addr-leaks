@@ -971,17 +971,24 @@ void AddrLeaks::addConstraints(Function &F) {
 								for (unsigned j = 0; j < memoryBlocks[vv].size(); j++) {
 									int i = 0;
 									unsigned pos = 0;
+                                    bool hasConstantOp = true;
 
 									for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-										if (i == 1)
-											pos = cast<ConstantInt>(*it)->getZExtValue();
+										if (i == 1) {
+                                            if (isa<ConstantInt>(*it))
+    											pos = cast<ConstantInt>(*it)->getZExtValue();
+                                            else
+                                                hasConstantOp = false;
+                                        }
 
 										i++;
 									}
-									std::vector<int> mems = memoryBlocks[vv][j];
-									int a = Value2Int(I);
-									if (pos < mems.size())
-										pointerAnalysis->addAddr(a, mems[pos]);
+                                    if (hasConstantOp) {
+    									std::vector<int> mems = memoryBlocks[vv][j];
+    									int a = Value2Int(I);
+    									if (pos < mems.size())
+    										pointerAnalysis->addAddr(a, mems[pos]);
+                                    }
 								}
 							} else {
 								if (memoryBlock.count(vv)) {
@@ -993,40 +1000,54 @@ void AddrLeaks::addConstraints(Function &F) {
 										if (memoryBlock.count(v2)) {
 											int i = 0;
 											unsigned pos = 0;
+                                            bool hasConstantOp = true;
 
 											for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-												if (i == 1)
-													pos = cast<ConstantInt>(*it)->getZExtValue();
+												if (i == 1) {
+                                                    if (isa<ConstantInt>(*it))
+    													pos = cast<ConstantInt>(*it)->getZExtValue();
+                                                    else
+                                                        hasConstantOp = false;
+                                                }
 
 												i++;
 											}
 
-											std::vector<int> mems = memoryBlock[v2];
-											int parent = mems[0];
-											if (memoryBlock2.count(parent)) {
-												std::vector<int> mems2 = memoryBlock2[parent];
+                                            if (hasConstantOp) {
+                                                std::vector<int> mems = memoryBlock[v2];
+                                                int parent = mems[0];
+                                                if (memoryBlock2.count(parent)) {
+                                                    std::vector<int> mems2 = memoryBlock2[parent];
 
-												int a = Value2Int(I);
-												if (pos < mems2.size())
-													pointerAnalysis->addAddr(a, mems2[pos]);
+                                                    int a = Value2Int(I);
+                                                    if (pos < mems2.size())
+                                                        pointerAnalysis->addAddr(a, mems2[pos]);
+                                                }
 											}
 										}
 									} else {
 										int i = 0;
 										unsigned pos = 0;
+                                        bool hasConstantOp = true;
 
 										for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-											if (i == 1)
-												pos = cast<ConstantInt>(*it)->getZExtValue();
+											if (i == 1) {
+                                                if (isa<ConstantInt>(*it))
+    												pos = cast<ConstantInt>(*it)->getZExtValue();
+                                                else
+                                                    hasConstantOp = false;
+                                            }
 
 											i++;
 										}
 
-										std::vector<int> mems = memoryBlock[vv];
-										int a = Value2Int(I);
-										//pointerAnalysis->addBase(a, mems[pos]);
-										if (pos < mems.size())
-											pointerAnalysis->addAddr(a, mems[pos]);
+                                        if (hasConstantOp) {
+    										std::vector<int> mems = memoryBlock[vv];
+										    int a = Value2Int(I);
+										    //pointerAnalysis->addBase(a, mems[pos]);
+										    if (pos < mems.size())
+											    pointerAnalysis->addAddr(a, mems[pos]);
+                                        }
 									}
 								} else {
 									GetElementPtrInst *GEPI2 = dyn_cast<GetElementPtrInst>(vv);
@@ -1039,39 +1060,46 @@ void AddrLeaks::addConstraints(Function &F) {
 									if (memoryBlock.count(v2)) {
 										int i = 0;
 										unsigned pos = 0;
+                                        bool hasConstantOp = true;
 
 										for (User::op_iterator it = GEPI2->idx_begin(), e = GEPI2->idx_end(); it != e; ++it) {
-											if (i == 1)
-												pos = cast<ConstantInt>(*it)->getZExtValue();
+											if (i == 1) {
+                                                if (isa<ConstantInt>(*it))
+    												pos = cast<ConstantInt>(*it)->getZExtValue();
+                                                else
+                                                    hasConstantOp = false;
+                                            }
 
 											i++;
 										}
 
-										std::vector<int> mems = memoryBlock[v2];
-										if (pos < mems.size()) {
-											int parent = mems[pos];
+                                        if (hasConstantOp) {
+                                            std::vector<int> mems = memoryBlock[v2];
+                                            if (pos < mems.size()) {
+                                                int parent = mems[pos];
 
-											i = 0;
-											unsigned pos2 = 0;
+                                                i = 0;
+                                                unsigned pos2 = 0;
 
-											for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-												if (i == 1)
-													pos2 = cast<ConstantInt>(*it)->getZExtValue();
+                                                for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
+                                                    if (i == 1)
+                                                        pos2 = cast<ConstantInt>(*it)->getZExtValue();
 
-												i++;
-											}
+                                                    i++;
+                                                }
 
-											if (memoryBlock2.count(parent)) {
-												std::vector<int> mems2 = memoryBlock2[parent];
-												int a = Value2Int(I);
+                                                if (memoryBlock2.count(parent)) {
+                                                    std::vector<int> mems2 = memoryBlock2[parent];
+                                                    int a = Value2Int(I);
 
-												if (pos2 < mems2.size()) {
-													pointerAnalysis->addAddr(a, mems2[pos2]);
-													memoryBlock[v] = mems2;
-												}
-											}
+                                                    if (pos2 < mems2.size()) {
+                                                        pointerAnalysis->addAddr(a, mems2[pos2]);
+                                                        memoryBlock[v] = mems2;
+                                                    }
+                                                }
 
-										}
+                                            }
+                                        }
 									}
 								}
 							}
@@ -1086,40 +1114,54 @@ void AddrLeaks::addConstraints(Function &F) {
 								if (memoryBlock.count(v2)) {
 									int i = 0;
 									unsigned pos = 0;
+                                    bool hasConstantOp = true;
 
 									for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-										if (i == 1)
-											pos = cast<ConstantInt>(*it)->getZExtValue();
+										if (i == 1) {
+                                            if (isa<ConstantInt>(*it))
+    											pos = cast<ConstantInt>(*it)->getZExtValue();
+                                            else
+                                                hasConstantOp = false;
+                                        }
 
 										i++;
 									}
 
-									std::vector<int> mems = memoryBlock[v2];
-									int parent = mems[0];
-									if (memoryBlock2.count(parent)) {
-										std::vector<int> mems2 = memoryBlock2[parent];
+                                    if (hasConstantOp) {
+                                        std::vector<int> mems = memoryBlock[v2];
+                                        int parent = mems[0];
+                                        if (memoryBlock2.count(parent)) {
+                                            std::vector<int> mems2 = memoryBlock2[parent];
 
-										int a = Value2Int(I);
-										if (pos < mems2.size())
-											pointerAnalysis->addAddr(a, mems2[pos]);
-									}
+                                            int a = Value2Int(I);
+                                            if (pos < mems2.size())
+                                                pointerAnalysis->addAddr(a, mems2[pos]);
+                                        }
+                                    }
 								}
 							} else {
 								int i = 0;
 								unsigned pos = 0;
+                                bool hasConstantOp = true;
 
 								for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-									if (i == 1)
-										pos = cast<ConstantInt>(*it)->getZExtValue();
+									if (i == 1) {
+                                        if (isa<ConstantInt>(*it))
+    										pos = cast<ConstantInt>(*it)->getZExtValue();
+                                        else
+                                            hasConstantOp = false;
+                                    }
 
 									i++;
 								}
 
-								std::vector<int> mems = memoryBlock[v];
-								int a = Value2Int(I);
-								//pointerAnalysis->addBase(a, mems[pos]);
-								if (pos < mems.size())
-									pointerAnalysis->addAddr(a, mems[pos]);
+                                if (hasConstantOp) {
+								    std::vector<int> mems = memoryBlock[v];
+    								int a = Value2Int(I);
+    								//pointerAnalysis->addBase(a, mems[pos]);
+    								if (pos < mems.size())
+    									pointerAnalysis->addAddr(a, mems[pos]);
+                                }
 							}
 						} else {
 							GetElementPtrInst *GEPI2 = dyn_cast<GetElementPtrInst>(v);
@@ -1132,38 +1174,45 @@ void AddrLeaks::addConstraints(Function &F) {
 							if (memoryBlock.count(v2)) {
 								int i = 0;
 								unsigned pos = 0;
+                                bool hasConstantOp = true;
 
 								for (User::op_iterator it = GEPI2->idx_begin(), e = GEPI2->idx_end(); it != e; ++it) {
-									if (i == 1)
-										pos = cast<ConstantInt>(*it)->getZExtValue();
+									if (i == 1) {
+                                        if (isa<ConstantInt>(*it))
+    										pos = cast<ConstantInt>(*it)->getZExtValue();
+                                        else
+                                            hasConstantOp = false;
+                                    }
 
 									i++;
 								}
 
-								std::vector<int> mems = memoryBlock[v2];
-								if (pos < mems.size()) {
-									int parent = mems[pos];
+                                if (hasConstantOp) {
+                                    std::vector<int> mems = memoryBlock[v2];
+                                    if (pos < mems.size()) {
+                                        int parent = mems[pos];
 
-									i = 0;
-									unsigned pos2 = 0;
+                                        i = 0;
+                                        unsigned pos2 = 0;
 
-									for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-										if (i == 1)
-											pos2 = cast<ConstantInt>(*it)->getZExtValue();
+                                        for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
+                                            if (i == 1)
+                                                pos2 = cast<ConstantInt>(*it)->getZExtValue();
 
-										i++;
-									}
+                                            i++;
+                                        }
 
-									if (memoryBlock2.count(parent)) {
-										std::vector<int> mems2 = memoryBlock2[parent];
-										int a = Value2Int(I);
+                                        if (memoryBlock2.count(parent)) {
+                                            std::vector<int> mems2 = memoryBlock2[parent];
+                                            int a = Value2Int(I);
 
-										if (pos2 < mems2.size()) {
-											pointerAnalysis->addAddr(a, mems2[pos2]);
-											memoryBlock[v] = mems2;
-										}
-									}
-								}
+                                            if (pos2 < mems2.size()) {
+                                                pointerAnalysis->addAddr(a, mems2[pos2]);
+                                                memoryBlock[v] = mems2;
+                                            }
+                                        }
+                                    }
+                                }
 							}
 						}
 					}
@@ -1369,45 +1418,60 @@ void AddrLeaks::buildMyGraph(Function &F) {
 							if (memoryBlock.count(v2)) {
 								int i = 0;
 								unsigned pos = 0;
+                                bool hasConstantOp = true;
 
 								for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-									if (i == 1)
-										pos = cast<ConstantInt>(*it)->getZExtValue();
+									if (i == 1) {
+                                        if (isa<ConstantInt>(*it))
+    										pos = cast<ConstantInt>(*it)->getZExtValue();
+                                        else
+                                            hasConstantOp = false;
+                                    }
 
 									i++;
 								}
 
-								std::vector<int> mems = memoryBlock[v2];
-								int parent = mems[0];
+                                if (hasConstantOp) {
 
-								if (memoryBlock2.count(parent)) {
-									std::vector<int> mems2 = memoryBlock2[parent];
+                                    std::vector<int> mems = memoryBlock[v2];
+                                    int parent = mems[0];
 
-									if (pos < mems2.size()) {
-										graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems2[pos], ADDR));
-										vertices1.insert(std::make_pair(I, VALUE));
-										vertices2.insert(std::make_pair(mems2[pos], ADDR));
-									}
-								}
+                                    if (memoryBlock2.count(parent)) {
+                                        std::vector<int> mems2 = memoryBlock2[parent];
+
+                                        if (pos < mems2.size()) {
+                                            graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems2[pos], ADDR));
+                                            vertices1.insert(std::make_pair(I, VALUE));
+                                            vertices2.insert(std::make_pair(mems2[pos], ADDR));
+                                        }
+                                    }
+                                }
 							}
 						} else {
 							int i = 0;
 							unsigned pos = 0;
+                            bool hasConstantOp = true;
 
 							for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-								if (i == 1)
-									pos = cast<ConstantInt>(*it)->getZExtValue();
+								if (i == 1) {
+                                    if (isa<ConstantInt>(*it))
+    									pos = cast<ConstantInt>(*it)->getZExtValue();
+                                    else
+                                        hasConstantOp = false;
+                                }
 
 								i++;
 							}
 
-							std::vector<int> mems = memoryBlock[v];
+                            if (hasConstantOp) {
+                                std::vector<int> mems = memoryBlock[v];
 
-							if (pos < mems.size()) {
-								graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems[pos], ADDR));
-								vertices1.insert(std::make_pair(I, VALUE));
-								vertices2.insert(std::make_pair(mems[pos], ADDR));
-							}
+                                if (pos < mems.size()) {
+                                    graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems[pos], ADDR));
+                                    vertices1.insert(std::make_pair(I, VALUE));
+                                    vertices2.insert(std::make_pair(mems[pos], ADDR));
+                                }
+                            }
 						}
 					} else {
 						GetElementPtrInst *GEPI2 = dyn_cast<GetElementPtrInst>(v);
@@ -1420,39 +1484,53 @@ void AddrLeaks::buildMyGraph(Function &F) {
 						if (memoryBlock.count(v2)) {
 							int i = 0;
 							unsigned pos = 0;
+                            bool hasConstantOp = true;
 
 							for (User::op_iterator it = GEPI2->idx_begin(), e = GEPI2->idx_end(); it != e; ++it) {
-								if (i == 1)
-									pos = cast<ConstantInt>(*it)->getZExtValue();
+								if (i == 1) {
+                                    if (isa<ConstantInt>(*it))
+    									pos = cast<ConstantInt>(*it)->getZExtValue();
+                                    else
+                                        hasConstantOp = false;
+                                }
 
 								i++;
 							}
 
-							std::vector<int> mems = memoryBlock[v2];
+                            if (hasConstantOp) {
+                                std::vector<int> mems = memoryBlock[v2];
 
-							if (pos < mems.size()) {
-								int parent = mems[pos];
+                                if (pos < mems.size()) {
+                                    int parent = mems[pos];
 
-								i = 0;
-								unsigned pos2 = 0;
+                                    i = 0;
+                                    unsigned pos2 = 0;
+                                    bool hasConstantOp = true;
 
-								for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
-									if (i == 1)
-										pos2 = cast<ConstantInt>(*it)->getZExtValue();
+                                    for (User::op_iterator it = GEPI->idx_begin(), e = GEPI->idx_end(); it != e; ++it) {
+                                        if (i == 1) {
+                                            if (isa<ConstantInt>(*it))
+                                                pos2 = cast<ConstantInt>(*it)->getZExtValue();
+                                            else
+                                                hasConstantOp = false;
+                                        }
 
-									i++;
-								}
+                                        i++;
+                                    }
 
-								if (memoryBlock2.count(parent)) {
-									std::vector<int> mems2 = memoryBlock2[parent];
+                                    if (hasConstantOp) {
+                                        if (memoryBlock2.count(parent)) {
+                                            std::vector<int> mems2 = memoryBlock2[parent];
 
-									if (pos2 < mems2.size()) {
-										graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems2[pos2], ADDR));
-										vertices1.insert(std::make_pair(I, VALUE));
-										vertices2.insert(std::make_pair(mems2[pos2], ADDR));
-									}
-								}
-							}
+                                            if (pos2 < mems2.size()) {
+                                                graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(mems2[pos2], ADDR));
+                                                vertices1.insert(std::make_pair(I, VALUE));
+                                                vertices2.insert(std::make_pair(mems2[pos2], ADDR));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
 						}
 					}
 
