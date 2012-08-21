@@ -9,25 +9,9 @@ use the Pointer Analysis. It can be found on the PADriver folder.
 
 == Pointer Analysis Interface ==
 
-The Pointer Analysis works by collecting the code constraints (associated 
-with the instructions) and building a graph from these constraints. The final
-result allows to query which memory positions are reachable from a given 
-variable.
+We have implemented a pointer analysis algorithm on top of the LLVM infra-structure. The code is available in the `PointerAnalysis.h/cpp` files in this repository. Like any pointer analysis, ours can be divided into two parts: the tools to collect constraints from the program's intermediate representation, and the tools to solve these constraints. After solving the constraints, we can query which locations are aliases.
 
-To make things simple, both the memory positions and variables are treated
-by the analysis as identifiers (integers). It is up to the client the task
-of assigning the identifiers to the corresponding variables or memory
-positions. The input given to the analysis are just integer values.
-
-The analysis offers a simple interface through which the constraints of 
-the code are reported. After all the constraints are added, the function 
-`solve()` must be called to run the analysis. After this, the function 
-`pointsTo(int)` can be used to retrieve the set of memory positions pointed 
-by a given identifier. There is also a `print()` function which to the 
-standard output the graph connections and the points-to set of each 
-identifier.
-
-The interface used by the analysis (found on file PointerAnalysis.h) is
+The interface used by the analysis (found on file `PointerAnalysis.h`) is
 listed here as reference:
 
 {{{
@@ -54,19 +38,23 @@ std::set<int>  pointsTo(int A);
 void print();
 }}}
 
+The first step of the pointer analysis is to collect constraints. Some instructions in the program's intermediate representation generate these constraints. The methods `addAddr`, `addBase`, `addStore`, and `addLoad` are used to gather these constraints. Each constraints produces some vertices and edges in the constraint graph.
+
+It is this constraint graph that we will use to solve the points-to problem. After all the constraints are created, the function  `solve()` must be called to run the analysis. After this, the function `pointsTo(int)` can be used to retrieve the set of memory positions pointed 
+by a given identifier. There is also a `print()` function which prints in the standard output the graph connections and the points-to set of each 
+identifier.
+
+Notice that in order to keep our implementation simple, variables and memory positions  are treated by the analysis as the same category of identifiers (internally represented by integers). It is up to the client the task of pretty printing these identifiers. In other words, the input given to the analysis, i.e, the constraints, are just relations between integer values, as one can infer in the interface above.
+
+
 == How to run the provided Module Pass ==
 
-As said, we provide on our source code a simple driver, a module pass which 
-translates the code's instructions to the aforementioned constraints, runs 
-the analysis and prints the final result.
-
-In order to run the module pass we provided, after it is compiled, the 
-following steps are required:
+As said, we provide on our source code a simple driver, a module pass which  translates the code's instructions to the aforementioned constraints, runs the analysis and prints the final result. This driver is a very nice place to start learning about how to use our points-to analysis. One can use our driver by typing the following commands, where `mysource.c` is the program that should be analyzed:
 
  * Translate the c source code into a bitcode file:
   {{{llvm-gcc -emit-llvm -c mysource.c -o mysource.bc}}}
 
- * Then, run the analysis using the following:
+ * Run the analysis:
   {{{opt -load /path/to/the/compiled/PADriver.so -pa mysource.bc}}}
 
-The output will be printed on screen.
+The output will be printed on the screen.
