@@ -1,0 +1,72 @@
+#summary How to use the Pointer Analysis
+
+= Writing a LLVM Pass =
+
+The LLVM project has a great documentation on 
+[http://llvm.org/docs/WritingAnLLVMPass.html how to write a LLVM Pass]. 
+We also provide a simple module pass on our source code that shows how to
+use the Pointer Analysis. It can be found on the PADriver folder.
+
+== Pointer Analysis Interface ==
+
+The Pointer Analysis works by collecting the code constraints (associated 
+with the instructions) and building a graph from these constraints. The final
+result allows to query which memory positions are reachable from a given 
+variable.
+
+To make things simple, both the memory positions and variables are treated
+by the analysis as identifiers (integers). It is up to the client the task
+of assigning the identifiers to the corresponding variables or memory
+positions. The input given to the analysis are just integer values.
+
+The analysis offers a simple interface through which the constraints of 
+the code are reported. After all the constraints are added, the function 
+`solve()` must be called to run the analysis. After this, the function 
+`pointsTo(int)` can be used to retrieve the set of memory positions pointed 
+by a given identifier. There is also a `print()` function which to the 
+standard output the graph connections and the points-to set of each 
+identifier.
+
+The interface used by the analysis (found on file PointerAnalysis.h) is
+listed here as reference:
+
+{{{
+// Add a constraint of type: A = &B
+void addAddr(int A, int B);
+
+// Add a constraint of type: A = B
+void addBase(int A, int B);
+
+// Add a constraint of type: *A = B
+void addStore(int A, int B);
+
+// Add a constraint of type: A = *B
+void addLoad(int A, int B);
+
+// Execute the pointer analysis
+void solve();
+
+// Return the set of positions pointed by A:
+//   pointsTo(A) = {B1, B2, ...}
+std::set<int>  pointsTo(int A);
+
+// Print the final result
+void print();
+}}}
+
+== How to run the provided Module Pass ==
+
+As said, we provide on our source code a simple driver, a module pass which 
+translates the code's instructions to the aforementioned constraints, runs 
+the analysis and prints the final result.
+
+In order to run the module pass we provided, after it is compiled, the 
+following steps are required:
+
+ * Translate the c source code into a bitcode file:
+  {{{llvm-gcc -emit-llvm -c mysource.c -o mysource.bc}}}
+
+ * Then, run the analysis using the following:
+  {{{opt -load /path/to/the/compiled/PADriver.so -pa mysource.bc}}}
+
+The output will be printed on screen.
