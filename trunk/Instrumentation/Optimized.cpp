@@ -248,8 +248,8 @@ private:
 	void AddAssertCode(Value& shadow, Instruction& sinkCall)
 	{
 		Type* iN = Type::getIntNTy(*context, GetSize(*shadow.getType()));
-		CastInst* cast; //CastInst::Create(Instruction::BitCast, &shadow, iN, "", &sinkCall);
-
+		CastInst* cast;
+		
 		if (shadow.getType()->isPointerTy())
 		{
 			cast = CastInst::Create(Instruction::PtrToInt, &shadow, iN, "", &sinkCall);
@@ -300,11 +300,13 @@ private:
 			if (size > oldSize)
 			{
 				it->second->mutateType(iNType->getPointerTo());
+				it->second->setInitializer(&GetNullValue(*iNType));
 			}
 
 			return *it->second;
 		}
-
+		
+		
 		GlobalVariable* gv= new GlobalVariable(*module, iNType, false, GlobalVariable::CommonLinkage, &GetNullValue(*iNType), "");
 		gvs.insert(std::pair<unsigned, GlobalVariable*>(argNo, gv));
 		return *gv;
@@ -578,6 +580,7 @@ private:
 
 				CastInst* convertedShadow1 = CastInst::Create(Instruction::BitCast, &shadow1, newType, "", &instruction);
 				CastInst* convertedShadow2 = CastInst::Create(Instruction::BitCast, &shadow2, newType, "", &instruction);
+				
 
 
 				Instruction* orOp = BinaryOperator::Create(Instruction::Or, convertedShadow1, convertedShadow2, "", &instruction);
@@ -600,13 +603,13 @@ private:
 		case Instruction::AtomicRMW:
 		{
 			//TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction
-			newShadow = GetAllOnesValue(*instruction.getType());
+			newShadow = &GetAllOnesValue(*instruction.getType());
 			break;
 		}
 		case Instruction::AtomicCmpXchg:
 		{
 			//TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction.
-			newShadow = GetAllOnesValue(*instruction.getType());
+			newShadow = &GetAllOnesValue(*instruction.getType());
 			break;
 		}
 		case Instruction::LandingPad:
@@ -701,7 +704,6 @@ private:
 		{
 			CastInst& ci = cast<CastInst>(instruction);
 			Value *v = ci.getOperand(0);
-
 			newShadow = CastInst::Create(ci.getOpcode(), &GetShadow(*v), ci.getDestTy(), "", &instruction);
 			break;
 			/*
@@ -977,13 +979,13 @@ private:
 			if (size > oldSize)
 			{
 				returnGlobal->mutateType(iNType->getPointerTo());
+				returnGlobal->setInitializer(&GetNullValue(*iNType));
 			}
 
 			return *returnGlobal;
 		}
 
 		returnGlobal =  new GlobalVariable(*module, iNType, false, GlobalVariable::CommonLinkage, &GetNullValue(*iNType), "");
-
 		return *returnGlobal;
 	}
 	void AddShadow(Instruction& i, Value& shadow)
