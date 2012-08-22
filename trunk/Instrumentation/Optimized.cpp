@@ -72,7 +72,6 @@ public:
 		dumb = IsDumb;
 		continueExecution = Continue;
 		usePointerAnalysis = UsePointerAnalysis;
-		db("usePointerAnalysis = " << usePointerAnalysis << "\n");
 
 		analysis = &getAnalysis<AddrLeaks>();
 
@@ -117,13 +116,11 @@ public:
 
 		InstrumentStores();
 
-		db("!!!Begin handling param passing");
 		for (std::set<std::pair<Function*, Argument*> >::iterator it = callsToBeHandled.begin(), itEnd = callsToBeHandled.end(); it != itEnd; it++)
 		{
 			HandleParamPassingTo(*it->first, *it->second);
 		}
 
-		db("Begin handling returns");
 		for (std::set<Function*>::iterator it = returnsToBeHandled.begin(), itEnd = returnsToBeHandled.end(); it != itEnd; it++)
 		{
 			HandleReturns(**it);
@@ -135,10 +132,6 @@ public:
 		{
 			InstrumentDelayedPHINodes();
 		}
-
-
-
-		db("Finished instrumentation");
 
 		return true;
 	}
@@ -545,7 +538,6 @@ private:
 
 		if (isa<StoreInst>(&instruction)) return;
 
-		db(ident << "Instrumenting " << instruction);
 		ident[i] = ' ';
 		ident[i+1] = ' ';
 		ident[i + 2] = ' ';
@@ -642,10 +634,6 @@ private:
 		{
 			//TODO: Not sure if implemented correctly
 			InsertElementInst& ie = cast<InsertElementInst>(instruction);
-			db("insert element=" << ie);
-			db("operand0 = " << *ie.getOperand(0));
-			db("operand1 = " << *ie.getOperand(1));
-			db("operand2 = " << *ie.getOperand(2));
 			Value& shadow = GetShadow(*ie.getOperand(0));
 			Value& scalarShadow = GetShadow(*ie.getOperand(1));
 			newShadow = InsertElementInst::Create(&shadow, &scalarShadow, ie.getOperand(2), "", &instruction);
@@ -810,10 +798,6 @@ private:
 			}
 
 		}
-
-		i = i - 3;
-		ident[i] = 0;
-		db(ident << "Finished instrumenting " << instruction);
 	}
 
 	Function& GetAssertZeroStringFunction()
@@ -951,7 +935,6 @@ private:
 	}
 	void HandleReturns(Function& f)
 	{
-		db("Handling returns");
 		static std::set<Function*> alreadyHandled;
 
 		std::set<Function*>::iterator it = alreadyHandled.find(&f);
@@ -962,7 +945,6 @@ private:
 
 
 		GlobalVariable& returnGlobal = GetReturnGlobal(*f.getReturnType());
-		db("return global: " << returnGlobal);
 
 		//TODO: Maybe there is a way to go to the returns directly rather than iterating over all instructions
 		for (inst_iterator i = inst_begin(f), ie = inst_end(f); i != ie; ++i)
@@ -1024,16 +1006,6 @@ private:
 			if (AlreadyInstrumented(*i))
 			{
 				return *GetMetadata(*i, "shadow");
-				//				MDNode* node = i->getMetadata("shadow");
-				//
-				//				if (node == 0)
-				//				{
-				//					db("ERROR: " << value << "\n");
-				//				}
-				//
-				//				assert(node != 0);
-				//
-				//				return *node->getOperand(0); //TODO: not sure if this works
 			}
 
 			Instrument(*i);
@@ -1045,7 +1017,6 @@ private:
 		}
 		else if ((param = dyn_cast<Argument>(&value)))
 		{
-			db("Handling param: " << *param);
 			static std::map<Argument*, Value*> handledParams;
 
 			std::map<Argument*, Value*>::iterator it = handledParams.find(param);
@@ -1117,12 +1088,8 @@ private:
 		{
 			if (dyn_cast<CallInst>(*it) == 0 && dyn_cast<InvokeInst>(*it) == 0) continue;
 
-			db("Handling call: " << **it);
-
 			CallSite cs(*it);
 			Value* arg = cs.getArgument(param.getArgNo());
-
-			db("Parameter: " << *arg);
 			Value& shadow = GetShadow(*arg);
 			CastInst* cast = CastInst::Create(Instruction::BitCast, &gv, arg->getType()->getPointerTo(), "", cs.getInstruction());
 			MarkAsInstrumented(*cast);
@@ -1196,10 +1163,6 @@ private:
 	void MarkAsInstrumented(Instruction& i)
 	{
 		AddMetadata(i, "instrumented");
-		db("Marked as instrumented: " << i);
-		//		std::vector<Value*> vals;
-		//		MDNode* node = MDNode::get(*context, vals);
-		//		i.setMetadata("instrumented", node);
 	}
 };
 
