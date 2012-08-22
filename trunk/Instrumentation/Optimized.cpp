@@ -153,6 +153,17 @@ private:
 		MarkAsInstrumented(store);
 	}
 
+	void InstrumentAtomicRMW(AtomicRMWInst& inst)
+	{
+		//TODO: implement this.
+	}
+
+	void InstrumentCmpXchg(AtomicCmpXchgInst& cmpxchg)
+	{
+		//TODO: implement this.
+	}
+
+	//TODO: Maybe there's a way to join the 3 if's.
 	void InstrumentStores()
 	{
 		while (taggedAStore)
@@ -176,6 +187,31 @@ private:
 						}
 					}
 
+					AtomicRMWInst* armw = dyn_cast<AtomicRMWInst>(&*it);
+
+					if (armw && ! AlreadyInstrumented(*armw)) 
+					{
+						Value* v = armw->getValOperand();
+						Instruction* i = dyn_cast<Instruction>(v);
+
+						if (! usePointerAnalysis || (i && HasMetadata(*i, "must-instrument-store")) || (! i && storeValuesThatMustBeInstrumented.find(v) != storeValuesThatMustBeInstrumented.end()))
+						{
+							InstrumentAtomicRMW(*armw);
+						}
+					}
+
+					AtomicCmpXchgInst* cmpxchg = dyn_cast<AtomicCmpXchgInst>(&*it);
+
+					if (cmpxchg && ! AlreadyInstrumented(*cmpxchg)) 
+					{
+						Value* v = cmpxchg->getNewValOperand();
+						Instruction* i = dyn_cast<Instruction>(v);
+
+						if (! usePointerAnalysis || (i && HasMetadata(*i, "must-instrument-store")) || (! i && storeValuesThatMustBeInstrumented.find(v) != storeValuesThatMustBeInstrumented.end()))
+						{
+							InstrumentCmpXchg(*cmpxchg);
+						}
+					}
 				}
 			}
 		}
@@ -445,7 +481,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-																			{
+																													{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -459,7 +495,7 @@ private:
 		}
 
 		return valuesSet;
-																			}
+																													}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -569,6 +605,18 @@ private:
 
 		switch (instruction.getOpcode())
 		{
+		case Instruction::AtomicRMW:
+		{
+			//TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction
+			newShadow = GetAllOnesValue(*instruction.getType());
+			break;
+		}
+		case Instruction::AtomicCmpXchg:
+		{
+			//TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction.
+			newShadow = GetAllOnesValue(*instruction.getType());
+			break;
+		}
 		case Instruction::LandingPad:
 		{
 			LandingPadInst& landingPad = cast<LandingPadInst>(instruction);
