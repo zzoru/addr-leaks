@@ -600,6 +600,12 @@ private:
 
 		switch (instruction.getOpcode())
 		{
+        case Instruction::ShuffleVector:
+        {
+            //TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction
+			newShadow = &GetAllOnesValue(*instruction.getType());
+			break;
+        }
 		case Instruction::AtomicRMW:
 		{
 			//TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction
@@ -1157,6 +1163,7 @@ private:
 
 	Value* GetMetadata(Instruction& i, std::string tag)
 	{
+        //errs() << i << "\n";
 		MDNode* node = i.getMetadata(tag);
 		assert(node != 0);
 		return node->getOperand(0);
