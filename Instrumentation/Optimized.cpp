@@ -65,6 +65,9 @@ public:
 
 	}
 
+	std::set<Value*> dirtyValues; //These are the values that are possible dirty and that aren't instructions. If not using a static analysis, this is empty since every value is possible dirty and it wouldn't make
+	//sense to store ALL values in there
+
 	virtual bool runOnModule(Module& module)
 	{
 		taggedAStore = false;
@@ -72,11 +75,6 @@ public:
 		dumb = IsDumb;
 		continueExecution = Continue;
 		usePointerAnalysis = UsePointerAnalysis;
-
-		analysis = &getAnalysis<AddrLeaks>();
-
-		if (!dumb && analysis->getLeakedValues().empty())
-			return false;
 
 		Setup(module);
 		HandleSpecialFunctions(); //TODO: Must be first so the code that I added will not be instrumented. This solution is inelegant considering how the rest of the program handles these things
@@ -97,8 +95,22 @@ public:
 		}
 		else
 		{
+			analysis = &getAnalysis<AddrLeaks>();
 			std::set<Value*> leakedValues = analysis->getLeakedValues();
 
+			for (std::set<Value*>::iterator it = leakedValues.begin(); it != leakedValues.end(); it++)
+			{
+				Instruction* i = dyn_cast<Instruction>(*it);
+
+				if (i)
+				{
+					AddMetadata(*i, "dirty");
+				}
+				else
+				{
+					dirtyValues.insert(*it);
+				}
+			}
 
 			for (std::set<Value*>::iterator it = leakedValues.begin(); it != leakedValues.end(); it++)
 			{
@@ -249,7 +261,7 @@ private:
 	{
 		Type* iN = Type::getIntNTy(*context, GetSize(*shadow.getType()));
 		CastInst* cast;
-		
+
 		if (shadow.getType()->isPointerTy())
 		{
 			cast = CastInst::Create(Instruction::PtrToInt, &shadow, iN, "", &sinkCall);
@@ -305,8 +317,8 @@ private:
 
 			return *it->second;
 		}
-		
-		
+
+
 		GlobalVariable* gv= new GlobalVariable(*module, iNType, false, GlobalVariable::CommonLinkage, &GetNullValue(*iNType), "");
 		gvs.insert(std::pair<unsigned, GlobalVariable*>(argNo, gv));
 		return *gv;
@@ -476,7 +488,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-																													{
+																																			{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -490,7 +502,7 @@ private:
 		}
 
 		return valuesSet;
-																													}
+																																			}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -539,13 +551,6 @@ private:
 		ident[i] = 0;
 
 		if (isa<StoreInst>(&instruction)) return;
-
-		ident[i] = ' ';
-		ident[i+1] = ' ';
-		ident[i + 2] = ' ';
-		ident[i + 3] = 0;
-		i = i + 3;
-
 		MarkAsInstrumented(instruction);
 
 		Value* newShadow = 0;
@@ -580,7 +585,7 @@ private:
 
 				CastInst* convertedShadow1 = CastInst::Create(Instruction::BitCast, &shadow1, newType, "", &instruction);
 				CastInst* convertedShadow2 = CastInst::Create(Instruction::BitCast, &shadow2, newType, "", &instruction);
-				
+
 
 
 				Instruction* orOp = BinaryOperator::Create(Instruction::Or, convertedShadow1, convertedShadow2, "", &instruction);
@@ -608,7 +613,7 @@ private:
         }
 		case Instruction::AtomicRMW:
 		{
-			//TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction
+			//TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction. 
 			newShadow = &GetAllOnesValue(*instruction.getType());
 			break;
 		}
@@ -630,6 +635,16 @@ private:
 			Value* agg = extract.getAggregateOperand();
 			Value& shadow = GetShadow(*agg);
 			newShadow = ExtractValueInst::Create(&shadow, extract.getIndices(), "", &instruction);
+			break;
+		}
+		case Instruction::InsertValue:
+		{
+			InsertValueInst& insert = cast<InsertValueInst>(instruction);
+			Value* agg = insert.getAggregateOperand();
+			Value& aggShadow = GetShadow(*agg);
+			Value* value = insert.getInsertedValueOperand();
+			Value& shadow = GetShadow(*value);
+			newShadow = InsertValueInst::Create(&aggShadow, value, insert.getIndices(), "", &instruction);
 			break;
 		}
 		case Instruction::ExtractElement:
@@ -661,7 +676,7 @@ private:
 			Value* pointer = load.getPointerOperand();
 			Value& pointerShadowMemory = CreateTranslateCall(*pointer, load);
 			newShadow = new LoadInst(&pointerShadowMemory, "", &instruction);
-			HandleStoresIn(*pointer);
+			if (! dumb) HandleStoresIn(*pointer);
 			break;
 		}
 		case Instruction::GetElementPtr:
@@ -761,7 +776,8 @@ private:
 					{
 						Value& shadow = GetShadow(*it->get());
 						GlobalVariable& gv = GetParamGlobal(*it->get()->getType(), argNo);
-						CastInst *cast = CastInst::Create(Instruction::BitCast, &gv, shadow.getType(), "", &instruction);
+						CastInst *cast = CastInst::Create(Instruction::BitCast, &gv, shadow.getType()->getPointerTo(), "", &instruction);
+
 						MarkAsInstrumented(*cast);
 						StoreInst* store = new StoreInst(&shadow, cast, &instruction); //TODO: isn't there something like StoreInst::Create?
 
@@ -770,12 +786,36 @@ private:
 					}
 				}
 
-				GlobalVariable& gv = GetReturnGlobal(*cs.getType());
-				CastInst* cast = CastInst::Create(Instruction::BitCast, &gv, instruction.getType()->getPointerTo(), "", &instruction);
-				MarkAsInstrumented(*cast);
-				Instruction* next = GetNextInstruction(instruction);
-				assert(next != 0);
-				newShadow = new LoadInst(cast, "", next);
+
+				CallInst* call = dyn_cast<CallInst>(&instruction);
+
+				if (call)
+				{
+					Instruction* next = GetNextInstruction(instruction);	
+					GlobalVariable& gv = GetReturnGlobal(*cs.getType());
+					CastInst* cast = CastInst::Create(Instruction::BitCast, &gv, instruction.getType()->getPointerTo(), "", next);	
+					MarkAsInstrumented(*cast);
+					newShadow = new LoadInst(cast, "", next);
+				}
+				else
+				{
+					InvokeInst& invoke = cast<InvokeInst>(instruction);
+
+
+					BasicBlock* tmpBlock = BasicBlock::Create(*context, "", invoke.getParent()->getParent());
+					BasicBlock* normalDest = invoke.getNormalDest();
+
+					invoke.setNormalDest(tmpBlock);
+
+					GlobalVariable& gv = GetReturnGlobal(*cs.getType());
+					CastInst* cast = CastInst::Create(Instruction::BitCast, &gv, instruction.getType()->getPointerTo(), "", tmpBlock);	
+					MarkAsInstrumented(*cast);
+					Instruction* load = new LoadInst(cast, "", tmpBlock);
+					AddMetadata(*load, "from-invoke");
+					BranchInst* branch = BranchInst::Create(normalDest, tmpBlock);
+					MarkAsInstrumented(*branch);
+					newShadow = load;
+				}
 			}
 			else
 			{
@@ -1002,12 +1042,26 @@ private:
 		//		MDNode* node = MDNode::get(*context, vals);
 		//		i.setMetadata("shadow", node);
 	}
+
 	Value& GetShadow(Value& value)
 	{
+
 		Instruction* i;
 		GlobalVariable* gv;
 		Constant* c;
 		Argument* param;
+
+		if (! dumb) 
+		{
+			if ((i = dyn_cast<Instruction>(&value)))
+			{
+				if (! HasMetadata(*i, "dirty")) return GetNullValue(*value.getType());
+			}
+			else
+			{
+				if (dirtyValues.find(&value) == dirtyValues.end()) return GetNullValue(*value.getType());
+			}
+		}
 
 		if ((i = dyn_cast<Instruction>(&value)))
 		{
@@ -1046,7 +1100,6 @@ private:
 			assert(shadow != 0);
 			handledParams.insert(std::pair<Argument*, Value*>(param, shadow));
 			callsToBeHandled.insert(std::pair<Function*, Argument*>(f, param));
-			//		HandleParamPassingTo(*f, *param);
 			return *shadow;
 		}
 		else if ((c = dyn_cast<Constant>(&value)))
@@ -1077,12 +1130,27 @@ private:
 			PHINode& original = *it->first;
 			PHINode& phiShadow = *it->second;
 
+			int i = 0;
 			PHINode::block_iterator blockIt = original.block_begin(), blockItEnd = original.block_end();
 			for (PHINode::op_iterator it = original.op_begin(), itEnd = original.op_end(); it != itEnd; ++it)
 			{
 				Value& shadow = GetShadow(**it);
-				phiShadow.addIncoming(&shadow, *blockIt);
+				
+				Instruction* instruction = dyn_cast<Instruction>(&shadow);
+				
+				if (instruction && HasMetadata(*instruction, "from-invoke"))
+				{
+					phiShadow.addIncoming(&shadow, instruction->getParent()); 
+					original.setIncomingBlock(i, instruction->getParent());
+				}
+				else
+				{
+					phiShadow.addIncoming(&shadow, *blockIt); 
+				}
+				
+				
 				++blockIt;
+				i++;
 			}
 
 			delayedPHINodes.erase(it++);
@@ -1114,6 +1182,7 @@ private:
 		if (retType->isPointerTy()) return &GetAllOnesValue(*retType);
 		else return &GetNullValue(*retType);
 	}
+
 	Instruction* GetNextInstruction(Instruction& i)
 	{
 		BasicBlock::iterator it(&i);
@@ -1128,11 +1197,13 @@ private:
 		}
 
 		it++;
+
 		return it;
 	}
-	virtual void getAnalysisUsage(AnalysisUsage &info) const
+	virtual void getAnalysisUsage(AnalysisUsage &info) 
 	{
-		info.addRequired<AddrLeaks>();
+		dumb = IsDumb;
+		if (! dumb) info.addRequired<AddrLeaks>();
 	}
 	bool AlreadyInstrumented(Instruction& i)
 	{
