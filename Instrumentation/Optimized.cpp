@@ -487,7 +487,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-																																					{
+																																									{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -501,7 +501,7 @@ private:
 		}
 
 		return valuesSet;
-																																					}
+																																									}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -531,17 +531,50 @@ private:
 		}
 	}
 
-	void Setup(Module& module)
+	void AddSetupToMainFunction()
 	{
+		Function& f = GetInitFunction();
+		Function* main = module->getFunction("main");
+		Instruction* first = main->getEntryBlock().getFirstNonPHI();
+		CallInst* init = CallInst::Create(&f, "", first);
+		MarkAsInstrumented(*init);
+	}
+
+	void AddSetupToGlobalCtor()
+	{
+		GlobalVariable* gv = module->getGlobalVariable("llvm.global_ctors");
+
+		if (! gv) return; //TODO: not sure if this is needed
+
+		Value* v = gv->getInitializer();
+		ConstantArray* carray = cast<ConstantArray>(v);
+
+		for (ConstantArray::op_iterator it = carray->op_begin(), itEnd = carray->op_end(); it != itEnd; ++it)
+		{
+			ConstantStruct& cs = cast<ConstantStruct>(**it);	
+			Function& func = cast<Function>(*cs.getAggregateElement(1));
+			AddSetupCodeToFunction(func);
+		}
+	}
+
+	void AddSetupCodeToFunction(Function& f)
+	{
+		Function& initFunc = GetInitFunction();
+		Instruction* first = f.getEntryBlock().getFirstNonPHI();
+		CallInst* init = CallInst::Create(&initFunc, "", first);
+		MarkAsInstrumented(*init);
+	}
+
+	void Setup(Module& module)
+	{	
 		this->module = &module;
 		this->context = &module.getContext();
 		targetData = new TargetData(&module);
 
-		Function& f = GetInitFunction();
-		Function* main = module.getFunction("main");
-		Instruction* first = main->getEntryBlock().getFirstNonPHI();
-		CallInst* init = CallInst::Create(&f, "", first);
-		MarkAsInstrumented(*init);
+		Function& main = *module.getFunction("main");
+		AddSetupCodeToFunction(main);
+		
+		AddSetupToGlobalCtor();
 	}
 	void Instrument(Instruction& instruction)
 	{
