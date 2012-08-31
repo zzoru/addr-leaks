@@ -127,15 +127,19 @@ public:
 
 		InstrumentStores();
 
+
+
 		for (std::set<Function*>::iterator it = returnsToBeHandled.begin(), itEnd = returnsToBeHandled.end(); it != itEnd; it++)
 		{
 			HandleReturns(**it);
 		}
 
-        for (std::set<std::pair<Function*, Argument*> >::iterator it = callsToBeHandled.begin(), itEnd = callsToBeHandled.end(); it != itEnd; it++)
+		for (std::set<std::pair<Function*, Argument*> >::iterator it = callsToBeHandled.begin(), itEnd = callsToBeHandled.end(); it != itEnd; it++)
 		{
 			HandleParamPassingTo(*it->first, *it->second);
 		}
+
+
 
 		HandleSinkCalls();
 
@@ -487,7 +491,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-																																									{
+																																											{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -501,7 +505,7 @@ private:
 		}
 
 		return valuesSet;
-																																									}
+																																											}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -547,7 +551,9 @@ private:
 		if (! gv) return; //TODO: not sure if this is needed
 
 		Value* v = gv->getInitializer();
-		ConstantArray* carray = cast<ConstantArray>(v);
+		ConstantArray* carray = dyn_cast<ConstantArray>(v);
+
+		if (! carray) return;
 
 		for (ConstantArray::op_iterator it = carray->op_begin(), itEnd = carray->op_end(); it != itEnd; ++it)
 		{
@@ -573,7 +579,7 @@ private:
 
 		Function& main = *module.getFunction("main");
 		AddSetupCodeToFunction(main);
-		
+
 		AddSetupToGlobalCtor();
 	}
 	void Instrument(Instruction& instruction)
