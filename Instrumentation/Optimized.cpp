@@ -62,7 +62,7 @@ public:
 
 	Optimized() : ModulePass(ID)
 	{
-
+		dumb = IsDumb;
 	}
 
 	std::set<Value*> dirtyValues; //These are the values that are possible dirty and that aren't instructions. If not using a static analysis, this is empty since every value is possible dirty and it wouldn't make
@@ -70,9 +70,8 @@ public:
 
 	virtual bool runOnModule(Module& module)
 	{
-		taggedAStore = false;
-
 		dumb = IsDumb;
+		taggedAStore = dumb;
 		continueExecution = Continue;
 		usePointerAnalysis = UsePointerAnalysis;
 
@@ -488,7 +487,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-																																			{
+																																					{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -502,7 +501,7 @@ private:
 		}
 
 		return valuesSet;
-																																			}
+																																					}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -605,12 +604,12 @@ private:
 
 		switch (instruction.getOpcode())
 		{
-        case Instruction::ShuffleVector:
-        {
-            //TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction
+		case Instruction::ShuffleVector:
+		{
+			//TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction
 			newShadow = &GetAllOnesValue(*instruction.getType());
 			break;
-        }
+		}
 		case Instruction::AtomicRMW:
 		{
 			//TODO: this is just a placeholder so that the pass doesn't abort on programs that use this instruction. 
@@ -1037,10 +1036,6 @@ private:
 	void AddShadow(Instruction& i, Value& shadow)
 	{
 		AddMetadata(i, "shadow", &shadow);
-		//		std::vector<Value*> vals;
-		//		vals.push_back(&shadow);
-		//		MDNode* node = MDNode::get(*context, vals);
-		//		i.setMetadata("shadow", node);
 	}
 
 	Value& GetShadow(Value& value)
@@ -1135,9 +1130,9 @@ private:
 			for (PHINode::op_iterator it = original.op_begin(), itEnd = original.op_end(); it != itEnd; ++it)
 			{
 				Value& shadow = GetShadow(**it);
-				
+
 				Instruction* instruction = dyn_cast<Instruction>(&shadow);
-				
+
 				if (instruction && HasMetadata(*instruction, "from-invoke"))
 				{
 					phiShadow.addIncoming(&shadow, instruction->getParent()); 
@@ -1147,8 +1142,8 @@ private:
 				{
 					phiShadow.addIncoming(&shadow, *blockIt); 
 				}
-				
-				
+
+
 				++blockIt;
 				i++;
 			}
@@ -1200,16 +1195,18 @@ private:
 
 		return it;
 	}
-	virtual void getAnalysisUsage(AnalysisUsage &info) 
+
+	virtual void getAnalysisUsage(AnalysisUsage &info) const
 	{
-		dumb = IsDumb;
-		if (! dumb) info.addRequired<AddrLeaks>();
+		if (! dumb) 
+		{
+			info.addRequired<AddrLeaks>();
+		}
 	}
+
 	bool AlreadyInstrumented(Instruction& i)
 	{
 		return HasMetadata(i, "instrumented");
-		//		MDNode* node = i.getMetadata("instrumented");
-		//		return node != 0;
 	}
 
 	void AddMetadata(Instruction& i, std::string tag, Value* v = 0)
@@ -1234,7 +1231,6 @@ private:
 
 	Value* GetMetadata(Instruction& i, std::string tag)
 	{
-        //errs() << i << "\n";
 		MDNode* node = i.getMetadata(tag);
 		assert(node != 0);
 		return node->getOperand(0);
