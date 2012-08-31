@@ -127,14 +127,14 @@ public:
 
 		InstrumentStores();
 
-		for (std::set<std::pair<Function*, Argument*> >::iterator it = callsToBeHandled.begin(), itEnd = callsToBeHandled.end(); it != itEnd; it++)
-		{
-			HandleParamPassingTo(*it->first, *it->second);
-		}
-
 		for (std::set<Function*>::iterator it = returnsToBeHandled.begin(), itEnd = returnsToBeHandled.end(); it != itEnd; it++)
 		{
 			HandleReturns(**it);
+		}
+
+        for (std::set<std::pair<Function*, Argument*> >::iterator it = callsToBeHandled.begin(), itEnd = callsToBeHandled.end(); it != itEnd; it++)
+		{
+			HandleParamPassingTo(*it->first, *it->second);
 		}
 
 		HandleSinkCalls();
