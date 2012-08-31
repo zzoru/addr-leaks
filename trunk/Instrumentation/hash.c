@@ -12,6 +12,10 @@ void* begin;
 
 void createShadowMemory()
 {
+	static int alreadyCalled = 0;
+	
+	if (alreadyCalled) return;
+	
 	begin = mmap(0, MAX_MEMORY / 2, PROT_READ | PROT_WRITE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_NORESERVE, 0, 0); 
 	
 	if (begin== MAP_FAILED) 
@@ -19,18 +23,24 @@ void createShadowMemory()
 		printf("Instrumentation MMAP failed. errno=%d\n", errno);
 		exit(-1);
 	}
+	
+	alreadyCalled = 1;
 }
 
 void* translate(void* addr)
 {
+	void* ret;
+	
 	if (addr <= begin)
 	{
-		 return begin + (long) addr;
+		 ret = begin + (long) addr;
 	}
 	else 
 	{
-		return begin - MAX_MEMORY / 2 + (long) addr;
+		ret = begin - MAX_MEMORY / 2 + (long) addr;
 	}
+	
+	return ret;
 }
 
 void myAbort()
