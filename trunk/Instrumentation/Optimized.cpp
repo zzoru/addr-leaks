@@ -492,7 +492,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-																																															{
+																																																	{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -506,7 +506,7 @@ private:
 		}
 
 		return valuesSet;
-																																															}
+																																																	}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -839,12 +839,12 @@ private:
 				else
 				{
 					InvokeInst& invoke = cast<InvokeInst>(instruction);
-					
+
 					//TODO: I'm assuming that getNextNode returns 0 when there isn't a next node (ie. the block is the last one)
-					
+
 					BasicBlock* tmpBlock = BasicBlock::Create(*context, "", invoke.getParent()->getParent(), invoke.getParent()->getNextNode());
 					BasicBlock* normalDest = invoke.getNormalDest();
-					
+
 					invoke.getParent()->replaceSuccessorsPhiUsesWith(tmpBlock);
 
 					invoke.setNormalDest(tmpBlock);
@@ -853,7 +853,6 @@ private:
 					CastInst* cast = CastInst::Create(Instruction::BitCast, &gv, instruction.getType()->getPointerTo(), "", tmpBlock);	
 					MarkAsInstrumented(*cast);
 					Instruction* load = new LoadInst(cast, "", tmpBlock);
-					AddMetadata(*load, "from-invoke");
 					BranchInst* branch = BranchInst::Create(normalDest, tmpBlock);
 					MarkAsInstrumented(*branch);
 					newShadow = load;
@@ -1175,18 +1174,7 @@ private:
 				Value& shadow = GetShadow(**it);
 
 				Instruction* instruction = dyn_cast<Instruction>(&shadow);
-
-				if (instruction && HasMetadata(*instruction, "from-invoke"))
-				{
-					phiShadow.addIncoming(&shadow, *blockIt);
-//					(*blockIt)->replaceSuccessorsPhiUsesWith(instruction->getParent()); //original.setIncomingBlock(i, instruction->getParent());
-				}
-				else
-				{
-					phiShadow.addIncoming(&shadow, *blockIt); 
-				}
-
-
+				phiShadow.addIncoming(&shadow, *blockIt);
 				++blockIt;
 				i++;
 			}
