@@ -287,8 +287,10 @@ private:
 	void AddStringAssertCode(Value& string, Instruction& sinkCall)
 	{
 		Function& assertZeroStringFunction = GetAssertZeroStringFunction();
+		CastInst* v = CastInst::Create(CastInst::BitCast, &string, Type::getInt8PtrTy(*context), "", &sinkCall);
 		std::vector<Value*> args;
-		args.push_back(&string);
+		args.push_back(v);
+		Value* str = sinkCall.getOperand(0);	
 		CallInst* call = CallInst::Create(&assertZeroStringFunction, args, "", &sinkCall);
 		MarkAsInstrumented(*call);
 	}
