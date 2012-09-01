@@ -839,10 +839,13 @@ private:
 				else
 				{
 					InvokeInst& invoke = cast<InvokeInst>(instruction);
-
-
-					BasicBlock* tmpBlock = BasicBlock::Create(*context, "", invoke.getParent()->getParent());
+					
+					//TODO: I'm assuming that getNextNode returns 0 when there isn't a next node (ie. the block is the last one)
+					
+					BasicBlock* tmpBlock = BasicBlock::Create(*context, "", invoke.getParent()->getParent(), invoke.getParent()->getNextNode());
 					BasicBlock* normalDest = invoke.getNormalDest();
+					
+					invoke.getParent()->replaceSuccessorsPhiUsesWith(tmpBlock);
 
 					invoke.setNormalDest(tmpBlock);
 
@@ -1175,8 +1178,8 @@ private:
 
 				if (instruction && HasMetadata(*instruction, "from-invoke"))
 				{
-					phiShadow.addIncoming(&shadow, instruction->getParent()); 
-					original.setIncomingBlock(i, instruction->getParent());
+					phiShadow.addIncoming(&shadow, *blockIt);
+//					(*blockIt)->replaceSuccessorsPhiUsesWith(instruction->getParent()); //original.setIncomingBlock(i, instruction->getParent());
 				}
 				else
 				{
