@@ -128,17 +128,16 @@ public:
 		InstrumentStores();
 
 
-
 		for (std::set<Function*>::iterator it = returnsToBeHandled.begin(), itEnd = returnsToBeHandled.end(); it != itEnd; it++)
 		{
 			HandleReturns(**it);
 		}
 
+
 		for (std::set<std::pair<Function*, Argument*> >::iterator it = callsToBeHandled.begin(), itEnd = callsToBeHandled.end(); it != itEnd; it++)
 		{
 			HandleParamPassingTo(*it->first, *it->second);
 		}
-
 
 
 		HandleSinkCalls();
@@ -491,7 +490,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-																																											{
+																																															{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -505,7 +504,7 @@ private:
 		}
 
 		return valuesSet;
-																																											}
+																																															}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -1197,8 +1196,10 @@ private:
 		for (Value::use_iterator it = f.use_begin(), itEnd = f.use_end(); it != itEnd; it++)
 		{
 			if (dyn_cast<CallInst>(*it) == 0 && dyn_cast<InvokeInst>(*it) == 0) continue;
-
 			CallSite cs(*it);
+
+			if (cs.getCalledFunction() != &f) continue;
+
 			Value* arg = cs.getArgument(param.getArgNo());
 			Value& shadow = GetShadow(*arg);
 			CastInst* cast = CastInst::Create(Instruction::BitCast, &gv, arg->getType()->getPointerTo(), "", cs.getInstruction());
