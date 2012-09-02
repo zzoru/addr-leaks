@@ -409,7 +409,6 @@ private:
 					case 'G':
 					case 'n':
 					case 'L':
-					case '%':
 						vaza.push_back(false);
 						isString.push_back(false);
 						break;
@@ -429,6 +428,8 @@ private:
 						vaza.push_back(true);
 						isString.push_back(true);
 						break;
+					case '%':
+						break;
 					}
 				}
 
@@ -437,7 +438,7 @@ private:
 		}
 
 		for (int i = 0; i < vaza.size(); i++)
-		{
+		{	
 			if (vaza[i] && (cs->getArgument(i + 1) == v || v == 0))
 			{
 				if (isString[i])
