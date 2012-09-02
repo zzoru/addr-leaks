@@ -492,7 +492,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-																																																	{
+																																																					{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -506,7 +506,7 @@ private:
 		}
 
 		return valuesSet;
-																																																	}
+																																																					}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -844,8 +844,26 @@ private:
 
 					BasicBlock* tmpBlock = BasicBlock::Create(*context, "", invoke.getParent()->getParent(), invoke.getParent()->getNextNode());
 					BasicBlock* normalDest = invoke.getNormalDest();
+					BasicBlock* invokeBlock = invoke.getParent();
+					
+					//updating the phis
+					for (BasicBlock::iterator it = normalDest->begin(), itEnd = normalDest->end(); it != itEnd; ++it)
+					{
+						PHINode* phi = dyn_cast<PHINode>(it);
 
-					invoke.getParent()->replaceSuccessorsPhiUsesWith(tmpBlock);
+						if (! phi) break;
+						
+						int i = 0;
+						for (PHINode::block_iterator blockIt = phi->block_begin(), blockItEnd = phi->block_end(); blockIt != blockItEnd; ++blockIt)
+						{
+							if (*blockIt == invokeBlock)
+							{
+								phi->setIncomingBlock(i, tmpBlock);
+							}
+							
+							++i;
+						}
+					}
 
 					invoke.setNormalDest(tmpBlock);
 
