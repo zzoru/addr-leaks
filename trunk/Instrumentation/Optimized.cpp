@@ -372,16 +372,24 @@ private:
 			int i = 0;
 
 
-			while (true)
+			while (i < size)
 			{
-				while (i < size && formatString[i] != '%') i++;
+				while (i < size && formatString[i] != '%') 
+				{
+					i++;
+				}
 
-				if (i == size) break;
 				i++;
 
 				if (i < size && isdigit(formatString[i]))
 				{
 					while (isdigit(formatString[i])) i++;
+				}
+
+				if (i < size && formatString[i] == '.')
+				{
+					i++;
+					while (i < size && isdigit(formatString[i])) i++;
 				}
 
 				if (i < size && formatString[i] == '*')
@@ -391,11 +399,7 @@ private:
 					i++;
 				}
 
-				if (i < size && formatString[i] == '.')
-				{
-					i++;
-					while (i < size && isdigit(formatString[i])) i++;
-				}
+
 
 				if (i < size)
 				{
@@ -493,7 +497,7 @@ private:
 	}
 
 	std::vector<Value*> GetPointsToSet(Value& v)
-																																																					{
+																																																							{
 		PointerAnalysis* pointerAnalysis = analysis->getPointerAnalysis();
 
 		int i = analysis->Value2Int(&v);
@@ -507,7 +511,7 @@ private:
 		}
 
 		return valuesSet;
-																																																					}
+																																																							}
 
 
 	void HandleStoresIn(Value& pointer)
@@ -846,14 +850,14 @@ private:
 					BasicBlock* tmpBlock = BasicBlock::Create(*context, "", invoke.getParent()->getParent(), invoke.getParent()->getNextNode());
 					BasicBlock* normalDest = invoke.getNormalDest();
 					BasicBlock* invokeBlock = invoke.getParent();
-					
+
 					//updating the phis
 					for (BasicBlock::iterator it = normalDest->begin(), itEnd = normalDest->end(); it != itEnd; ++it)
 					{
 						PHINode* phi = dyn_cast<PHINode>(it);
 
 						if (! phi) break;
-						
+
 						int i = 0;
 						for (PHINode::block_iterator blockIt = phi->block_begin(), blockItEnd = phi->block_end(); blockIt != blockItEnd; ++blockIt)
 						{
@@ -861,7 +865,7 @@ private:
 							{
 								phi->setIncomingBlock(i, tmpBlock);
 							}
-							
+
 							++i;
 						}
 					}
