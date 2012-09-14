@@ -95,14 +95,13 @@ void PointerAnalysis::addLoad(int A, int B)
 /**
  * Return the set of positions pointed by A:
  *   pointsTo(A) = {B1, B2, ...}
- *  TODO: Check this
  */
 std::set<int> PointerAnalysis::pointsTo(int A)
 {
     if (debug) std::cerr << "Recovering Points-to-set of "<< A << std::endl;
 
 	int repA = vertices[A];
-	return pointsToSet[A];
+	return pointsToSet[repA];
 }
 
 // ============================================= //
@@ -341,6 +340,7 @@ void PointerAnalysis::solve()
     
     while (!WorkSet.empty()) {
         int Node = *WorkSet.begin();
+        Node = vertices[Node];
         WorkSet.erase(WorkSet.begin());
         
         if (debug) 
@@ -353,9 +353,11 @@ void PointerAnalysis::solve()
         IntSet::iterator V;
         for (V = pointsToSet[Node].begin(); V != pointsToSet[Node].end(); V++ ) 
 		{
+            int reprV = vertices[*V];
             if (debug)
             {
                 std::cerr << "   - Current V: " << *V << std::endl;
+                std::cerr << "   - Repr of V: " << reprV << std::endl;
                 std::cerr << "   - Load Constraints" << std::endl;
             }
             // For every constraint A = *Node
@@ -363,10 +365,12 @@ void PointerAnalysis::solve()
             for (A=loads[Node].begin(); A != loads[Node].end(); A++) 
             {
                 // If V->A not in Graph
-                if (from[*V].find(*A) == from[*V].end()) 
+                // Get the repr of A
+                int reprA = vertices[*A];
+                if (from[reprV].find(reprA) == from[reprV].end()) 
 				{
-                    addEdge(*V, *A);
-                    NewWorkSet.insert(*V);
+                    addEdge(reprV, reprA);
+                    NewWorkSet.insert(reprV);
                 }
             }
 
@@ -376,10 +380,12 @@ void PointerAnalysis::solve()
             for (B=stores[Node].begin(); B != stores[Node].end(); B++) 
             {
                 // If B->V not in Graph
-                if (from[*B].find(*V) == from[*B].end()) 
+                // Get the repr of B
+                int reprB = vertices[*B];
+                if (from[reprB].find(reprV) == from[reprB].end()) 
 				{
-                    addEdge(*B, *V);
-                    NewWorkSet.insert(*B);
+                    addEdge(reprB, reprV);
+                    NewWorkSet.insert(reprB);
                 }
             }
         }
@@ -428,6 +434,20 @@ void PointerAnalysis::solve()
         
         // Swap WorkSets if needed
         if (WorkSet.empty()) WorkSet.swap(NewWorkSet);
+    }
+
+    // Consolidate Points-To Set
+    IntMap::iterator NodeIt;
+    for (NodeIt = vertices.begin(); NodeIt != vertices.end(); NodeIt++) {
+        // Only have to consolidate if vertex is not active (was merged)
+        // (in other words, when its repr. is not itself)
+        if (NodeIt->first != NodeIt->second) {
+            const IntSet& ptsR = pointsToSet[NodeIt->second];
+            IntSet::iterator V;
+            for (V = ptsR.begin(); V != ptsR.end(); V++) {
+                pointsToSet[NodeIt->first].insert(*V);
+            }
+        }
     }
 }
 
@@ -484,9 +504,77 @@ void PointerAnalysis::print()
 }
 
 // ============================================= //
+        
+void PointerAnalysis::printDot(std::ostream& output) {
+    IntSetMap verticesLabels;
+    IntMap::iterator mapIt;
+    IntSet::iterator setIt;
+    IntSet::iterator setIt2;
+    for (mapIt = vertices.begin(); mapIt != vertices.end(); mapIt++) {
+        // Vertice is the representative
+        if (mapIt->first == mapIt->second) {
+            verticesLabels[mapIt->first].insert(mapIt->first);
+        }
+        else {
+            verticesLabels[mapIt->second].insert(mapIt->first);
+        }
+    }
+
+    output << "digraph SomeNiceName {" << std::endl;
+
+    // Print the vertices
+    for (setIt = activeVertices.begin(); setIt != activeVertices.end(); setIt++) {
+        output << "    " << *setIt << " [label=\"";
+
+        std::string style = "color=blue,style=solid";
+
+        setIt2 = verticesLabels[*setIt].begin();
+        output << *(setIt2++);
+        for ( ; setIt2 != verticesLabels[*setIt].end(); setIt2++) {
+            output << ", " << *setIt2;
+            style = "color=darkgreen,style=bold";
+        }
+
+        output << "\"," << style << "];" << std::endl;
+    }
+
+    // Print the Edges
+    for (setIt = activeVertices.begin(); setIt != activeVertices.end(); setIt++) {
+        for (setIt2 = from[*setIt].begin(); setIt2 != from[*setIt].end() ; setIt2++) {
+            if (*setIt == *setIt2) continue;
+            output << "    " << *setIt << " -> " << *setIt2 << ";" << std::endl;
+        }
+    }
+
+    // Print Pointed memories
+    for (setIt = activeVertices.begin(); setIt != activeVertices.end(); setIt++) {
+
+        // Skip if current vertex doesn't point to someone
+        if (pointsToSet[*setIt].size() == 0) break;
+
+        // Print the node with the pointed locations
+        output << "    pts" << *setIt << " [label=\"";
+        setIt2 = pointsToSet[*setIt].begin();
+        output << *(setIt2++);
+        for (; setIt2 != pointsToSet[*setIt].end() ; setIt2++) {
+            output << ", " << *setIt2;
+        }
+        output << "\",color=red,style=dashed,shape=box];" << std::endl;
+
+        // Bind the node to the vertex
+        output << "    pts" << *setIt << " -> " << *setIt << ";" << std::endl;
+
+    }
+
+    output << "}" << std::endl;
+}
+
+// ============================================= //
 
 /// Returns the points-to map
 std::map<int, std::set<int> > PointerAnalysis::allPointsTo() {
     return pointsToSet;
 }
+
+// ============================================= //
 

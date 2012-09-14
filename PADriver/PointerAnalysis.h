@@ -6,6 +6,7 @@
 #include <set>
 #include <map>
 #include <deque>
+#include <ostream>
 
 // ============================================= //
 
@@ -44,7 +45,11 @@ class PointerAnalysis {
         // Return the points-to map
         std::map<int, std::set<int> > allPointsTo();
 
+        // Print the current state (graph, representatives and points-to)
 		void print();
+
+        // Print the graph (DOT format)
+        void printDot(std::ostream& output);
 	
 	private:
 		void addNode(int id);
