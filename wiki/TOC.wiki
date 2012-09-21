@@ -2,7 +2,6 @@
 
 = Table of Contents =
 
-  * [relwork Related works]
   * [Example1 Exploiting Address Leaks]
   * [HowToUseThePointerAnalysis How to Use the Pointer Analysis]
   * [relwork Related Work]
