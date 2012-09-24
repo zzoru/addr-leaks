@@ -1,6 +1,6 @@
 #summary Table of Contents
 
-= Table of Contents =
+= Contents =
 
   * [Example1 Exploiting Address Leaks]
   * [HowToUseThePointerAnalysis How to Use the Pointer Analysis]
