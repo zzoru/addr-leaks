@@ -22,7 +22,10 @@
     * *Summary*: the paper describes a lattice-based static analysis algorithm derived from type systems to detect vulnerable parts of code in Web applications (PHP) to instrument with runtime guards. The experimental results shown that using the static analysis to discover vulnerable points instead of instrumenting all the sensitive function calls reduced potential runtime overhead by 98.4%. For the static analysis they got a false positive rate of 29.9% for the simple lattice and 26.9% adding support for type-aware qualifiers.
     * *What can we take from it?* The static analysis can be used to reduce the amount of instrumented code and thus reduce the runtime overhead of our solution.
 
-  * Saner: Composing Static and Dynamic Analysis to Validate Sanitization in Web Applications, _Balzarotti et al._
+  * Saner: Composing Static and Dynamic Analysis to Validate Sanitization in Web Applications, _Balzarotti et al._, S&P'08
+  * *Summary*: This paper combines static and dynamic analysis to increase the precision of bug detection. The authors use the dynamic analysis to check the possible vulnerabilities reported by the static analysis.
+  * *What can we take from it*: the related work section is very comprehensive, and there was no work in that section that combines dynamic and static analyses in the way that we do it.
+
 
   * The MINESTRONE Architecture Combining Static and Dynamic Analysis Techniques for Software Security, _Keromytis et al._
 
