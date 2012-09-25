@@ -1,4 +1,4 @@
-#summary Relate works section
+#summary Relate work
 
 = Related Works =
 
@@ -26,6 +26,10 @@
     * *Summary*: This paper combines static and dynamic analysis to increase the precision of bug detection. The authors use the dynamic analysis to check the possible vulnerabilities reported by the static analysis.
     * *What can we take from it*: the related work section is very comprehensive, and there was no work in that section that combines dynamic and static analyses in the way that we do it.
 
+
+  * Program Slicing Enhances a Verification Technique Combining Static and Dynamic Analysis, _Chebaro et al._, SAC'12
+    * *Summary*: this paper is similar to Balzarotti's. It uses static analysis to guide a program slicer. The authors have used a tainted-flow-like analysis to reduce the program to only those parts that are necessary to send data from source to sink functions. Then, they feed this reduced program to a test generator, which tries to prove that some vulnerability exists.
+    * *What can we take from it*: the authors develop a nice theory explaining what is a slice, and how the static analysis can lead to this slice.
 
   * The MINESTRONE Architecture Combining Static and Dynamic Analysis Techniques for Software Security, _Keromytis et al._
 
