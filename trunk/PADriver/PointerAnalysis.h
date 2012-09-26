@@ -49,7 +49,8 @@ class PointerAnalysis {
 		void print();
 
         // Print the graph (DOT format)
-        void printDot(std::ostream& output);
+        void printDot(std::ostream& output, std::string graphName, 
+                std::map<int, std::string> names);
 	
 	private:
 		void addNode(int id);
