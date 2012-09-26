@@ -505,36 +505,59 @@ void PointerAnalysis::print()
 
 // ============================================= //
         
-void PointerAnalysis::printDot(std::ostream& output) {
+void PointerAnalysis::printDot(std::ostream& output, std::string graphName,
+        std::map<int, std::string> names) {
+
+    // Used to create the labels
     IntSetMap verticesLabels;
+    
+    // Iterators used when traversing the structures
     IntMap::iterator mapIt;
     IntSet::iterator setIt;
     IntSet::iterator setIt2;
+
+    // For each active vertex, build a set with the merged vertices
+    // represented by it
     for (mapIt = vertices.begin(); mapIt != vertices.end(); mapIt++) {
-        // Vertice is the representative
+        // If the vertice is not merge, it is the one to be drawn
         if (mapIt->first == mapIt->second) {
             verticesLabels[mapIt->first].insert(mapIt->first);
         }
+        // If it is merged, its name goes to the label of its representative
         else {
             verticesLabels[mapIt->second].insert(mapIt->first);
         }
     }
 
-    output << "digraph SomeNiceName {" << std::endl;
+    // It is a directed graph
+    output << "digraph " << graphName << " {" << std::endl;
 
-    // Print the vertices
+    // Declare the vertices
     for (setIt = activeVertices.begin(); setIt != activeVertices.end(); setIt++) {
-        output << "    " << *setIt << " [label=\"";
 
+        // Default style
         std::string style = "color=blue,style=solid";
 
+        // Declare the node by its ID
+        output << "    " << *setIt << " [label=\"";
+
+        // Compute the label and change the style if there are merged vertices
         setIt2 = verticesLabels[*setIt].begin();
-        output << *(setIt2++);
+        int n = *(setIt2++);
+        if (names.find(n) != names.end())
+            output << names[n];
+        else
+            output << "#" << n;
         for ( ; setIt2 != verticesLabels[*setIt].end(); setIt2++) {
-            output << ", " << *setIt2;
+            n = *setIt2;
+            if (names.find(n) != names.end())
+                output << ", " << names[*setIt2];
+            else
+                output << ", #" << n;
             style = "color=darkgreen,style=bold";
         }
 
+        // Print out the style
         output << "\"," << style << "];" << std::endl;
     }
 
@@ -550,19 +573,27 @@ void PointerAnalysis::printDot(std::ostream& output) {
     for (setIt = activeVertices.begin(); setIt != activeVertices.end(); setIt++) {
 
         // Skip if current vertex doesn't point to someone
-        if (pointsToSet[*setIt].size() == 0) break;
+        if (pointsToSet[*setIt].size() == 0) continue;
 
         // Print the node with the pointed locations
         output << "    pts" << *setIt << " [label=\"";
         setIt2 = pointsToSet[*setIt].begin();
-        output << *(setIt2++);
+        int n = *(setIt2++);
+        if (names.find(n) == names.end()) 
+            output << "#" << n;
+        else
+            output << names[n];
         for (; setIt2 != pointsToSet[*setIt].end() ; setIt2++) {
-            output << ", " << *setIt2;
+            n = *setIt2;
+            if (names.find(n) == names.end()) 
+                output << ", #" << *setIt2;
+            else
+                output << ", " << names[*setIt2];
         }
         output << "\",color=red,style=dashed,shape=box];" << std::endl;
 
         // Bind the node to the vertex
-        output << "    pts" << *setIt << " -> " << *setIt << ";" << std::endl;
+        output << "    " << *setIt << " -> pts" << *setIt << " [color=red,style=dashed];" << std::endl;
 
     }
 
