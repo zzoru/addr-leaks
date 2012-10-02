@@ -32,6 +32,8 @@
 #include "llvm/Support/CallSite.h"
 #include "llvm/ADT/Statistic.h"
 #include "llvm/Analysis/DebugInfo.h"
+#include <llvm/Support/CommandLine.h>
+#include <llvm/Support/raw_ostream.h>
 
 #include "PointerAnalysis.h"
 
@@ -46,6 +48,10 @@ STATISTIC(totalPrintfs, "Number of printfs");
 STATISTIC(totalLeakingPrintfs, "Number of leaking printfs");
 //STATISTIC(graphSize, "Size of graph");
 //STATISTIC(buggyPathsSize, "Size of buggy paths");
+
+cl::opt<std::string> Sink("s", cl::desc("Specify a sink function"), cl::desc("sink"));
+cl::opt<int> ArgPos("a", cl::desc("Specify a sink function argument position"), cl::desc("argpos"));
+cl::opt<bool> Print("x", cl::desc("Print dot graph"), cl::desc("dot"));
 
 namespace {
 // AddrLeaks - The inter-procedural address leak analysis
@@ -91,7 +97,7 @@ private:
 	std::map<VNode, INodeSet> graphVi;
 	std::map<INode, VNodeSet> graphiV;
 
-	std::set<Value*> leakedValues;
+	std::vector<Value*> leakedValues;
 	std::vector<std::pair<Instruction*, std::vector<Value*> > > printfLeaks;
 
 	std::map<Value*, std::vector<Value*> > phiValues;
@@ -126,10 +132,12 @@ private:
 	void printInt2ValueTable();
 	void handleAlloca(Instruction *I);
 	void handleNestedStructs(const Type *StTy, int parent);
+    void showTrace();
 public:
 	int Value2Int(Value* v);
 	Value* Int2Value(int);
 	PointerAnalysis* getPointerAnalysis();
+	std::vector<Value*> getLeakedValues2();
 	std::set<Value*> getLeakedValues();
 	std::vector<std::pair<Instruction*, std::vector<Value*> > > getPrintfLeaks();
 };
@@ -184,7 +192,7 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
 	visited.insert(std::make_pair(v, t));
 
 	if (sources.find(std::make_pair(v, t)) != sources.end()) {
-		leakedValues.insert(v);
+		leakedValues.push_back(v);
 		return true;
 	}
 
@@ -194,7 +202,7 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
 		nodeType tt = (*it).second;
 
 		if (dfs(vv, tt)) {
-			leakedValues.insert(v);
+			leakedValues.push_back(v);
 			sources.insert(std::make_pair(v, t));
 			return true;
 		}
@@ -206,7 +214,7 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
 		nodeType tt = (*it).second;
 
 		if (dfs(vv, tt)) {
-			leakedValues.insert(v);
+			leakedValues.push_back(v);
 			sources.insert(std::make_pair(v, t));
 			return true;
 		}
@@ -270,6 +278,28 @@ int AddrLeaks::countBuggyPathSize(Value* v, nodeType t) {
 }
 
 ////////////////////
+
+void AddrLeaks::showTrace() {
+    errs() << "\nTrace:\n";
+
+	std::vector<Value*> lv = getLeakedValues2();
+
+	for (std::vector<Value*>::iterator it = lv.begin(); it != lv.end(); it++) {
+        errs() << "    -> " << **it << "";
+    
+        if (Instruction *inst = dyn_cast<Instruction>(*it)) {
+        
+            if (MDNode *N = inst->getMetadata("dbg")) {
+                DILocation Loc(N);
+                unsigned Line = Loc.getLineNumber();
+                StringRef File = Loc.getFilename();
+                errs() << " (File: " << File << ", Line: " << Line << ")";
+            }
+        }
+
+        errs() << "\n";
+	}
+}
 
 void AddrLeaks::printDot(std::string moduleName) {
 	std::string errorInfo;
@@ -653,173 +683,256 @@ bool AddrLeaks::runOnModule(Module &M) {
 
 	//graphSize = vertices1.size() + vertices2.size();
 
-	//printDot("module");
+    if (Print)
+    	printDot("module");
 
-	// Detect leaks via printf
-	Function *sink = M.getFunction("printf");
+	// Detect leaks
+    if (!Sink.empty() && ArgPos) { // Use provided function
+        int argpos = ArgPos - 1;
+        Function *sink = M.getFunction(Sink);
 
-	if (sink) {
-		for (Value::use_iterator I = sink->use_begin(), E = sink->use_end(); I != E; ++I) {
-			if (Instruction *use = dyn_cast<Instruction>(*I)) {
-				CallSite CS(use);
-				std::vector<Value*> leaked;
+        if (sink) {
+            for (Value::use_iterator I = sink->use_begin(), E = sink->use_end(); I != E; ++I) {
+                if (Instruction *use = dyn_cast<Instruction>(*I)) {
+                    CallSite CS(use);
+                    std::vector<Value*> leaked;
 
-				sinks.insert(use);
-				totalPrintfs++;
+                    sinks.insert(use);
+                    totalPrintfs++;
 
-				CallSite::arg_iterator AI = CS.arg_begin();
+                    Value *arg = CS.getArgument(argpos);
 
-				std::vector<bool> vaza, isString(false);
-				Value *fmt = *AI;
-				std::string formatString;
-				bool hasFormat = false;
+                    IntSet pointsTo = pointerAnalysis->pointsTo(Value2Int(arg));
 
-				if (ConstantExpr *CE = dyn_cast<ConstantExpr>(fmt)) {
-					if (GlobalVariable *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
-						ConstantDataArray *CA;
-						if ((CA = dyn_cast<ConstantDataArray>(GV->getInitializer()))) {
-							if (CA->isString()) {
-								formatString = CA->getAsString();
-								hasFormat = true;
-							}
-						}
-					}
-				}
+                    for (IntSet::const_iterator it = pointsTo.begin(),
+                            e = pointsTo.end(); it != e; it++) {
 
-				if (!formatString.empty()) {
-					int formatStringSize = formatString.size();
-					for (int i = 0; i < formatStringSize - 1; i++) {
-						if (formatString[i] == '%') {
-							if (formatString[i + 1] == 'c' ||
-									formatString[i + 1] == 'e' ||
-									formatString[i + 1] == 'E' ||
-									formatString[i + 1] == 'f' ||
-									formatString[i + 1] == 'g' ||
-									formatString[i + 1] == 'G' ||
-									formatString[i + 1] == 'n' ||
-									formatString[i + 1] == 'L' ||
-									formatString[i + 1] == '%') {
-								vaza.push_back(false);
-								i++;
-							} else if (formatString[i + 1] == 'd' ||
-									formatString[i + 1] == 'i' ||
-									formatString[i + 1] == 'o' ||
-									formatString[i + 1] == 'u' ||
-									formatString[i + 1] == 'x' ||
-									formatString[i + 1] == 'X' ||
-									formatString[i + 1] == 'p' ||
-									formatString[i + 1] == 'h' ||
-									formatString[i + 1] == 'l') {
-								vaza.push_back(true);
-								i++;
-							} else if (formatString[i + 1] == 's') { // Special case
-								vaza.push_back(true);
-								isString[vaza.size() - 1] = true;
-								i++;
-							}
-						}
-					}
-				}
+                        visited.clear();
+                        visited2.clear();
 
-				AI++;
+                        if (int2value.count(*it)) {
+                            Value *vv = int2value[*it];
 
-				if (!hasFormat || !vaza.empty()) {
-					int vazaSize = vaza.size();
+                            if (dfs(vv, VALUE)) {
+                                leaked.push_back(vv);
+                                leaksFound++;
+                            }
+                        } else {
+                            if (dfs(*it, VALUE)) {
+                                leaked.push_back(arg); // FIX
+                                leaksFound++;
+                            }
+                        }
+                    }
 
-					for (int i = 0; AI != CS.arg_end(); ++AI, ++i) {
-						Value *v = *AI;
+                    unsigned leakedSize = leaked.size();
 
-						if (i < vazaSize && vaza[i]) {
-							if (isString[i]) { // Handle special string case.
-								IntSet pointsTo = pointerAnalysis->pointsTo(Value2Int(v));
+                    if (leakedSize > 0) {
+                        totalLeakingPrintfs++;
+                        errs() << "=========================================\n";
+                        
+                        if (MDNode *N = use->getMetadata("dbg")) {
+                            DILocation Loc(N);
+                            unsigned Line = Loc.getLineNumber();
+                            StringRef File = Loc.getFilename();
+                            StringRef Dir = Loc.getDirectory();
+                            errs() << "Dir: " << Dir << ", File: " << File << ", Line: " << Line << "\n\n";
+                        }
 
-								for (IntSet::const_iterator it = pointsTo.begin(),
-										e = pointsTo.end(); it != e; it++) {
+                        errs() << "Pointer leak detected in the instruction:\n";
+                        errs() << *use << "\n\n";
+                        errs() << "The leaked addresses are:\n";
 
-									visited.clear();
-									visited2.clear();
+                        for (unsigned i = 0; i < leakedSize; ++i) {
+                            Function *f = function[leaked[i]];
+                            std::string functionName = f ? f->getName().str() : "undefined";
 
-									if (int2value.count(*it)) {
-										Value *vv = int2value[*it];
+                            if (leaked[i]->getName().empty())
+                                errs() << " - (" << functionName << ") " << *leaked[i] << " = " << leaked[i] << "\n";
+                            else
+                                errs() << " - (" << functionName << ") " << leaked[i]->getName() << " = " << leaked[i] << "\n";
+                        }
 
-										if (dfs(vv, VALUE)) {
-											leaked.push_back(vv);
-											leaksFound++;
-										}
-									} else {
-										if (dfs(*it, VALUE)) {
-											leaked.push_back(v); // FIX
-											leaksFound++;
-										}
-									}
-								}
-							} else {
-								// Just to collect some statistics. Will disappear in future
-								// buggyPathsSize += countBuggyPathSize(v, VALUE);
+                        showTrace();
+                        leakedValues.clear();
 
-								// Real search
-								visited.clear();
-								visited2.clear();
+                        errs() << "=========================================\n";
+                        errs() << "\n";
 
-								if (dfs(v, VALUE)) {
-									leaked.push_back(v);
-									leaksFound++;
-								}
-							}
-						}
-					}
-				}
+                        printfLeaks.push_back(std::pair<Instruction*, std::vector<Value*> >(use, leaked));
+                    }
+                }
+            }
+        }
+        errs() << "OK\n";
+    } else {
+        Function *sink = M.getFunction("printf");
 
-				unsigned leakedSize = leaked.size();
+        if (sink) {
+            for (Value::use_iterator I = sink->use_begin(), E = sink->use_end(); I != E; ++I) {
+                if (Instruction *use = dyn_cast<Instruction>(*I)) {
+                    CallSite CS(use);
+                    std::vector<Value*> leaked;
 
-				if (leakedSize > 0) {
-					totalLeakingPrintfs++;
-					errs() << "=========================================\n";
-					errs() << "Pointer leak detected in the instruction:\n";
-					errs() << *use << "\n\n";
-					errs() << "The leaked addresses are:\n";
+                    sinks.insert(use);
+                    totalPrintfs++;
 
-					for (unsigned i = 0; i < leakedSize; ++i) {
-						Function *f = function[leaked[i]];
-						std::string functionName = f ? f->getName().str() : "undefined";
+                    CallSite::arg_iterator AI = CS.arg_begin();
 
-						if (leaked[i]->getName().empty())
-							errs() << " - (" << functionName << ") " << *leaked[i] << " = " << leaked[i] << "\n";
-						else
-							errs() << " - (" << functionName << ") " << leaked[i]->getName() << " = " << leaked[i] << "\n";
-					}
+                    std::vector<bool> vaza, isString(false);
+                    Value *fmt = *AI;
+                    std::string formatString;
+                    bool hasFormat = false;
 
-					if (MDNode *N = use->getMetadata("dbg")) {
-						DILocation Loc(N);
-						unsigned Line = Loc.getLineNumber();
-						StringRef File = Loc.getFilename();
-						StringRef Dir = Loc.getDirectory();
-						errs() << "Dir: " << Dir << ", File: " << File << ", Line: " << Line << "\n";
-					}
+                    if (ConstantExpr *CE = dyn_cast<ConstantExpr>(fmt)) {
+                        if (GlobalVariable *GV = dyn_cast<GlobalVariable>(CE->getOperand(0))) {
+                            ConstantDataArray *CA;
+                            if ((CA = dyn_cast<ConstantDataArray>(GV->getInitializer()))) {
+                                if (CA->isString()) {
+                                    formatString = CA->getAsString();
+                                    hasFormat = true;
+                                }
+                            }
+                        }
+                    }
 
-					errs() << "=========================================\n";
-					errs() << "\n";
+                    if (!formatString.empty()) {
+                        int formatStringSize = formatString.size();
+                        for (int i = 0; i < formatStringSize - 1; i++) {
+                            if (formatString[i] == '%') {
+                                if (formatString[i + 1] == 'c' ||
+                                        formatString[i + 1] == 'e' ||
+                                        formatString[i + 1] == 'E' ||
+                                        formatString[i + 1] == 'f' ||
+                                        formatString[i + 1] == 'g' ||
+                                        formatString[i + 1] == 'G' ||
+                                        formatString[i + 1] == 'n' ||
+                                        formatString[i + 1] == 'L' ||
+                                        formatString[i + 1] == '%') {
+                                    vaza.push_back(false);
+                                    i++;
+                                } else if (formatString[i + 1] == 'd' ||
+                                        formatString[i + 1] == 'i' ||
+                                        formatString[i + 1] == 'o' ||
+                                        formatString[i + 1] == 'u' ||
+                                        formatString[i + 1] == 'x' ||
+                                        formatString[i + 1] == 'X' ||
+                                        formatString[i + 1] == 'p' ||
+                                        formatString[i + 1] == 'h' ||
+                                        formatString[i + 1] == 'l') {
+                                    vaza.push_back(true);
+                                    i++;
+                                } else if (formatString[i + 1] == 's') { // Special case
+                                    vaza.push_back(true);
+                                    isString[vaza.size() - 1] = true;
+                                    i++;
+                                }
+                            }
+                        }
+                    }
 
-					printfLeaks.push_back(std::pair<Instruction*, std::vector<Value*> >(use, leaked));
-				}
-			}
-		}
-	}
+                    AI++;
 
-	/* Static analysis completed.
-	 * Call the method getLeakedValues() to get the instructions to instrument */
+                    if (!hasFormat || !vaza.empty()) {
+                        int vazaSize = vaza.size();
 
-	std::set<Value*> lv = getLeakedValues();
+                        for (int i = 0; AI != CS.arg_end(); ++AI, ++i) {
+                            Value *v = *AI;
 
-	for (std::set<Value*>::iterator it = lv.begin(); it != lv.end(); it++) {
-		errs() << "Leaked Value: " << **it << "\n";
+                            if (i < vazaSize && vaza[i]) {
+                                if (isString[i]) { // Handle special string case.
+                                    IntSet pointsTo = pointerAnalysis->pointsTo(Value2Int(v));
+
+                                    for (IntSet::const_iterator it = pointsTo.begin(),
+                                            e = pointsTo.end(); it != e; it++) {
+
+                                        visited.clear();
+                                        visited2.clear();
+
+                                        if (int2value.count(*it)) {
+                                            Value *vv = int2value[*it];
+
+                                            if (dfs(vv, VALUE)) {
+                                                leaked.push_back(vv);
+                                                leaksFound++;
+                                            }
+                                        } else {
+                                            if (dfs(*it, VALUE)) {
+                                                leaked.push_back(v); // FIX
+                                                leaksFound++;
+                                            }
+                                        }
+                                    }
+                                } else {
+                                    // Just to collect some statistics. Will disappear in future
+                                    // buggyPathsSize += countBuggyPathSize(v, VALUE);
+
+                                    // Real search
+                                    visited.clear();
+                                    visited2.clear();
+
+                                    if (dfs(v, VALUE)) {
+                                        leaked.push_back(v);
+                                        leaksFound++;
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    unsigned leakedSize = leaked.size();
+
+                    if (leakedSize > 0) {
+                        totalLeakingPrintfs++;
+                        errs() << "=========================================\n";
+                        
+                        if (MDNode *N = use->getMetadata("dbg")) {
+                            DILocation Loc(N);
+                            unsigned Line = Loc.getLineNumber();
+                            StringRef File = Loc.getFilename();
+                            StringRef Dir = Loc.getDirectory();
+                            errs() << "Dir: " << Dir << ", File: " << File << ", Line: " << Line << "\n\n";
+                        }
+
+                        errs() << "Pointer leak detected in the instruction:\n";
+                        errs() << *use << "\n\n";
+                        errs() << "The leaked addresses are:\n";
+
+                        for (unsigned i = 0; i < leakedSize; ++i) {
+                            Function *f = function[leaked[i]];
+                            std::string functionName = f ? f->getName().str() : "undefined";
+
+                            if (leaked[i]->getName().empty())
+                                errs() << " - (" << functionName << ") " << *leaked[i] << " = " << leaked[i] << "\n";
+                            else
+                                errs() << " - (" << functionName << ") " << leaked[i]->getName() << " = " << leaked[i] << "\n";
+                        }
+
+                        
+
+                        showTrace();
+                        leakedValues.clear();
+
+                        errs() << "=========================================\n";
+                        errs() << "\n";
+
+                        printfLeaks.push_back(std::pair<Instruction*, std::vector<Value*> >(use, leaked));
+                    }
+                }
+            }
+        }
 	}
 
 	return false;
 }
 
-std::set<Value*> AddrLeaks::getLeakedValues() {
+std::vector<Value*> AddrLeaks::getLeakedValues2() {
 	return leakedValues;
+}
+
+std::set<Value*> AddrLeaks::getLeakedValues() {
+    std::set<Value*> s(leakedValues.begin(), leakedValues.end());
+	return s;
 }
 
 std::vector<std::pair<Instruction*, std::vector<Value*> > > AddrLeaks::getPrintfLeaks() {
