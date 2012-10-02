@@ -754,7 +754,6 @@ bool AddrLeaks::runOnModule(Module &M) {
                         }
 
                         showTrace();
-                        leakedValues.clear();
 
                         errs() << "=========================================\n";
                         errs() << "\n";
@@ -764,7 +763,6 @@ bool AddrLeaks::runOnModule(Module &M) {
                 }
             }
         }
-        errs() << "OK\n";
     } else {
         Function *sink = M.getFunction("printf");
 
@@ -911,7 +909,6 @@ bool AddrLeaks::runOnModule(Module &M) {
                         
 
                         showTrace();
-                        leakedValues.clear();
 
                         errs() << "=========================================\n";
                         errs() << "\n";
