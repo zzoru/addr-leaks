@@ -530,7 +530,7 @@ void PointerAnalysis::printDot(std::ostream& output, std::string graphName,
     }
 
     // It is a directed graph
-    output << "digraph " << graphName << " {" << std::endl;
+    output << "digraph \"" << graphName << "\" {" << std::endl;
 
     // Declare the vertices
     for (setIt = activeVertices.begin(); setIt != activeVertices.end(); setIt++) {
