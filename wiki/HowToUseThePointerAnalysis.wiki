@@ -36,6 +36,10 @@ std::set<int>  pointsTo(int A);
 
 // Print the final result
 void print();
+
+// Print the final graph in DOT format
+void printDot(std::ostream& output, std::string graphName, 
+                std::map<int, std::string> names);
 }}}
 
 The first step of the pointer analysis is to collect constraints. Some instructions in the program's intermediate representation generate these constraints. The methods `addAddr`, `addBase`, `addStore`, and `addLoad` are used to gather these constraints. Each constraints produces some vertices and edges in the constraint graph.
@@ -52,9 +56,27 @@ Notice that in order to keep our implementation simple, variables and memory pos
 As said, we provide on our source code a simple driver, a module pass which  translates the code's instructions to the aforementioned constraints, runs the analysis and prints the final result. This driver is a very nice place to start learning about how to use our points-to analysis. One can use our driver by typing the following commands, where `mysource.c` is the program that should be analyzed:
 
  * Translate the c source code into a bitcode file:
-  {{{llvm-gcc -emit-llvm -c mysource.c -o mysource.bc}}}
+  {{{
+  llvm-gcc -emit-llvm -c mysource.c -o mysource.bc
+  }}}
 
  * Run the analysis:
-  {{{opt -load /path/to/the/compiled/PADriver.so -pa mysource.bc}}}
+  {{{
+  opt -load /path/to/the/compiled/PADriver.so -instnamer -analyze -pa mysource.bc
+  }}}
 
-The output will be printed on the screen.
+The output will be printed on the screen, including the memory graph in DOT format.
+
+The control flow graph (CFG) of the code can be shown at runtime by passing the option `-view-cfg` to the `opt` command. Alternatively, the CFG can be written into a `.dot` file in the current working directory by passing the option `-dot-cfg`. 
+
+These DOT format graphs can be converted to an image file using the _graphviz_ tools.
+Here is an example of how to generate a PNG from a `.dot` file:
+
+  {{{
+  dot -Tpng -o output-file.png my-dot-file.dot
+  }}}
+
+Where `output-file.png` is the output file and `my-dot-file.dot` is the file with the graph in DOT format.
+For other output file types and information about the parameters, run "`dot -?`" or check the manpage (`man dot`).
+
+More information regarding the LLVM options (such as `-view-cfg` and `-dot-cfg`) can be found on the [http://llvm.org/docs/Passes.html LLVM dcoumentation].
