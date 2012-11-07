@@ -21,6 +21,8 @@
 #include <map>
 #include <sstream>
 #include <iomanip>
+#include <fstream>
+#include <cstdlib>
 
 #include "llvm/Module.h"
 #include "llvm/Function.h"
@@ -46,8 +48,9 @@ using namespace llvm;
 STATISTIC(leaksFound, "Number of address leaks found");
 STATISTIC(totalPrintfs, "Number of printfs");
 STATISTIC(totalLeakingPrintfs, "Number of leaking printfs");
-//STATISTIC(graphSize, "Size of graph");
-//STATISTIC(buggyPathsSize, "Size of buggy paths");
+STATISTIC(graphSize, "Size of graph");
+STATISTIC(buggyPathsSize, "Size of buggy paths");
+STATISTIC(numberSources, "Number of sources before propagation");
 
 cl::opt<std::string> Sink("s", cl::desc("Specify a sink function"), cl::desc("sink"));
 cl::opt<int> ArgPos("a", cl::desc("Specify a sink function argument position"), cl::desc("argpos"));
@@ -66,12 +69,56 @@ struct AddrLeaks : public ModulePass {
 	static char ID;
 	AddrLeaks() : ModulePass(ID) {
 		nextMemoryBlock = 1;
+
+        // Read no leak function list
+
+        std::string line;
+        std::ifstream list;
+        list.open("/home/gabriel/llvm/llvm-3.1.src/lib/Transforms/AddrLeaks/noleak.txt");
+
+        if (list.is_open()) {
+            while (list.good()) {
+                getline(list, line);
+
+                if (line != "")
+                    functionListNever.push_back(line);
+            }
+        }
+
+        list.close();
+
+        // Read conditional leak function list
+
+        list.open("/home/gabriel/llvm/llvm-3.1.src/lib/Transforms/AddrLeaks/conditionalleak.txt");
+
+        if (list.is_open()) {
+            while (list.good()) {
+                getline(list, line);
+
+                if (line != "") {
+                    std::vector<std::string> s = split(line, ',');
+                    std::string fname = s[0];
+                    std::vector<int> args;
+
+                    for (unsigned i = 1; i < s.size(); i++) {
+                        args.push_back(atoi(s[i].c_str()));
+                    }
+                    
+                    functionListConditional.push_back(std::make_pair(fname, args));
+                }
+            }
+        }
+
+        list.close();
 	}
 
 	bool runOnModule(Module &M);
 
 private:
 	int nextMemoryBlock;
+
+    std::vector<std::string> functionListNever;
+    std::vector<std::pair<std::string, std::vector<int> > > functionListConditional;
 
 	VNodeSet sources;
 	INodeSet sources2;
@@ -110,8 +157,6 @@ private:
 	std::map<Value*, int> value2int;
 	std::map<int, Value*> int2value;
 
-
-	
 	
 	bool dfs(Value* v, nodeType t);
 	bool dfs(int v, nodeType t);
@@ -133,6 +178,8 @@ private:
 	void handleAlloca(Instruction *I);
 	void handleNestedStructs(const Type *StTy, int parent);
     void showTrace();
+    std::vector<std::string> &split(const std::string &, char, std::vector<std::string> &);
+    std::vector<std::string> split(const std::string &, char);
 public:
 	int Value2Int(Value* v);
 	Value* Int2Value(int);
@@ -142,6 +189,23 @@ public:
 	std::vector<std::pair<Instruction*, std::vector<Value*> > > getPrintfLeaks();
 };
 }
+
+std::vector<std::string> &AddrLeaks::split(const std::string &s, char delim, std::vector<std::string> &elems) {
+    std::stringstream ss(s);
+    std::string item;
+
+    while(std::getline(ss, item, delim)) {
+        elems.push_back(item);
+    }
+
+    return elems;
+}
+
+std::vector<std::string> AddrLeaks::split(const std::string &s, char delim) {
+        std::vector<std::string> elems;
+            return split(s, delim, elems);
+}
+
 
 PointerAnalysis* AddrLeaks::getPointerAnalysis()
 {
@@ -177,7 +241,7 @@ bool AddrLeaks::dfs(int v, nodeType t) {
 		nodeType tt = (*it).second;
 
 		if (dfs(vv, tt)) {
-			sources2.insert(std::make_pair(v, t));
+			sources2.insert(std::make_pair(v, t)); // Comment to get complete trace
 			return true;
 		}
 	}
@@ -203,7 +267,7 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
 
 		if (dfs(vv, tt)) {
 			leakedValues.push_back(v);
-			sources.insert(std::make_pair(v, t));
+			sources.insert(std::make_pair(v, t)); // Comment to get complete trace
 			return true;
 		}
 	}
@@ -215,7 +279,7 @@ bool AddrLeaks::dfs(Value* v, nodeType t) {
 
 		if (dfs(vv, tt)) {
 			leakedValues.push_back(v);
-			sources.insert(std::make_pair(v, t));
+			sources.insert(std::make_pair(v, t)); // Comment to get complete trace
 			return true;
 		}
 	}
@@ -233,18 +297,19 @@ int AddrLeaks::countBuggyPathSize(int v, nodeType t) {
 
 	visited4.insert(std::make_pair(v, t));
 
-	if (sources2.find(std::make_pair(v, t)) != sources2.end())
-		return 1;
+	if (sources2.find(std::make_pair(v, t)) != sources2.end()) {
+		total = 1;
 
-	for (VNodeSet::const_iterator it = graphiV[std::make_pair(v, t)].begin();
-			it != graphiV[std::make_pair(v, t)].end(); ++it) {
-		Value *vv = (*it).first;
-		nodeType tt = (*it).second;
+        for (VNodeSet::const_iterator it = graphiV[std::make_pair(v, t)].begin();
+                it != graphiV[std::make_pair(v, t)].end(); ++it) {
+            Value *vv = (*it).first;
+            nodeType tt = (*it).second;
 
-		total += countBuggyPathSize(vv, tt);
-	}
+            total += countBuggyPathSize(vv, tt);
+        }
+    }
 
-	return total + 1;
+	return total;
 }
 
 int AddrLeaks::countBuggyPathSize(Value* v, nodeType t) {
@@ -255,26 +320,27 @@ int AddrLeaks::countBuggyPathSize(Value* v, nodeType t) {
 
 	visited3.insert(std::make_pair(v, t));
 
-	if (sources.find(std::make_pair(v, t)) != sources.end())
-		return 1;
+	if (sources.find(std::make_pair(v, t)) != sources.end()) {
+		total = 1;
 
-	for (VNodeSet::const_iterator it = graphVV[std::make_pair(v, t)].begin();
-			it != graphVV[std::make_pair(v, t)].end(); ++it) {
-		Value *vv = (*it).first;
-		nodeType tt = (*it).second;
+        for (VNodeSet::const_iterator it = graphVV[std::make_pair(v, t)].begin();
+                it != graphVV[std::make_pair(v, t)].end(); ++it) {
+            Value *vv = (*it).first;
+            nodeType tt = (*it).second;
 
-		total += countBuggyPathSize(vv, tt);
-	}
+            total += countBuggyPathSize(vv, tt);
+        }
 
-	for (INodeSet::const_iterator it = graphVi[std::make_pair(v, t)].begin();
-			it != graphVi[std::make_pair(v, t)].end(); ++it) {
-		int vv = (*it).first;
-		nodeType tt = (*it).second;
+        for (INodeSet::const_iterator it = graphVi[std::make_pair(v, t)].begin();
+                it != graphVi[std::make_pair(v, t)].end(); ++it) {
+            int vv = (*it).first;
+            nodeType tt = (*it).second;
 
-		total += countBuggyPathSize(vv, tt);
-	}
+            total += countBuggyPathSize(vv, tt);
+        }
+    }
 
-	return total + 1;
+	return total;
 }
 
 ////////////////////
@@ -681,10 +747,12 @@ bool AddrLeaks::runOnModule(Module &M) {
 		}
 	}
 
-	//graphSize = vertices1.size() + vertices2.size();
+	graphSize = vertices1.size() + vertices2.size();
 
     if (Print)
     	printDot("module");
+
+    numberSources = sources.size() + sources2.size();
 
 	// Detect leaks
     if (!Sink.empty() && ArgPos) { // Use provided function
@@ -759,6 +827,7 @@ bool AddrLeaks::runOnModule(Module &M) {
                         errs() << "\n";
 
                         printfLeaks.push_back(std::pair<Instruction*, std::vector<Value*> >(use, leaked));
+                        leakedValues.clear();
                     }
                 }
             }
@@ -853,18 +922,22 @@ bool AddrLeaks::runOnModule(Module &M) {
                                             if (dfs(vv, VALUE)) {
                                                 leaked.push_back(vv);
                                                 leaksFound++;
+
+                                                // Just to collect some statistics. Will disappear in future
+                                                buggyPathsSize += countBuggyPathSize(v, VALUE);
                                             }
                                         } else {
                                             if (dfs(*it, VALUE)) {
                                                 leaked.push_back(v); // FIX
                                                 leaksFound++;
+                                                
+                                                // Just to collect some statistics. Will disappear in future
+                                                buggyPathsSize += countBuggyPathSize(v, VALUE);
                                             }
                                         }
                                     }
                                 } else {
-                                    // Just to collect some statistics. Will disappear in future
-                                    // buggyPathsSize += countBuggyPathSize(v, VALUE);
-
+                                    
                                     // Real search
                                     visited.clear();
                                     visited2.clear();
@@ -872,6 +945,9 @@ bool AddrLeaks::runOnModule(Module &M) {
                                     if (dfs(v, VALUE)) {
                                         leaked.push_back(v);
                                         leaksFound++;
+
+                                        // Just to collect some statistics. Will disappear in future
+                                        buggyPathsSize += countBuggyPathSize(v, VALUE);
                                     }
                                 }
                             }
@@ -914,6 +990,7 @@ bool AddrLeaks::runOnModule(Module &M) {
                         errs() << "\n";
 
                         printfLeaks.push_back(std::pair<Instruction*, std::vector<Value*> >(use, leaked));
+                        leakedValues.clear();
                     }
                 }
             }
@@ -1386,7 +1463,31 @@ void AddrLeaks::addConstraints(Function &F) {
 			case Instruction::Load:
 			{
 				// I = *ptr
-						LoadInst *LI = dyn_cast<LoadInst>(I);
+				LoadInst *LI = dyn_cast<LoadInst>(I);
+				Value *ptr = LI->getPointerOperand();
+
+				int a = Value2Int(I);
+				int b = Value2Int(ptr);
+				pointerAnalysis->addLoad(a, b);
+
+				break;
+			}
+            case Instruction::AtomicRMW:
+			{
+				// I = *ptr
+				AtomicRMWInst *LI = dyn_cast<AtomicRMWInst>(I);
+				Value *ptr = LI->getPointerOperand();
+
+				int a = Value2Int(I);
+				int b = Value2Int(ptr);
+				pointerAnalysis->addLoad(a, b);
+
+				break;
+			}
+            case Instruction::AtomicCmpXchg:
+			{
+				// I = *ptr
+				AtomicCmpXchgInst *LI = dyn_cast<AtomicCmpXchgInst>(I);
 				Value *ptr = LI->getPointerOperand();
 
 				int a = Value2Int(I);
@@ -1792,6 +1893,59 @@ void AddrLeaks::buildMyGraph(Function &F) {
 
 				break;
 			}
+            case Instruction::AtomicRMW:
+			{
+				AtomicRMWInst *ARMW = dyn_cast<AtomicRMWInst>(I);
+				Value *ptr = ARMW->getPointerOperand();
+
+				for (INodeSet::const_iterator it = memoryGraphVi[std::make_pair(ptr, VALUE)].begin();
+						it != memoryGraphVi[std::make_pair(ptr, VALUE)].end(); ++it) {
+					int vv = (*it).first;
+					graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(vv, VALUE));
+					vertices1.insert(std::make_pair(I, VALUE));
+					vertices2.insert(std::make_pair(vv, VALUE));
+				}
+
+				for (VNodeSet::const_iterator it = memoryGraphVV[std::make_pair(ptr, VALUE)].begin();
+						it != memoryGraphVV[std::make_pair(ptr, VALUE)].end(); ++it) {
+					Value* vv = (*it).first;
+					graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(vv, VALUE));
+					vertices1.insert(std::make_pair(I, VALUE));
+					vertices1.insert(std::make_pair(vv, VALUE));
+				}
+
+				setFunction(F, I);
+				setFunction(F, ptr);
+
+				break;
+			}
+            case Instruction::AtomicCmpXchg:
+			{
+				AtomicCmpXchgInst *ACX = dyn_cast<AtomicCmpXchgInst>(I);
+				Value *ptr = ACX->getPointerOperand();
+
+				for (INodeSet::const_iterator it = memoryGraphVi[std::make_pair(ptr, VALUE)].begin();
+						it != memoryGraphVi[std::make_pair(ptr, VALUE)].end(); ++it) {
+					int vv = (*it).first;
+					graphVi[std::make_pair(I, VALUE)].insert(std::make_pair(vv, VALUE));
+					vertices1.insert(std::make_pair(I, VALUE));
+					vertices2.insert(std::make_pair(vv, VALUE));
+				}
+
+				for (VNodeSet::const_iterator it = memoryGraphVV[std::make_pair(ptr, VALUE)].begin();
+						it != memoryGraphVV[std::make_pair(ptr, VALUE)].end(); ++it) {
+					Value* vv = (*it).first;
+					graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(vv, VALUE));
+					vertices1.insert(std::make_pair(I, VALUE));
+					vertices1.insert(std::make_pair(vv, VALUE));
+				}
+
+				setFunction(F, I);
+				setFunction(F, ptr);
+
+				break;
+			}
+	
 			case Instruction::Br: // Don't represent branches in the graph
 			break;
 			case Instruction::PHI:
@@ -1841,7 +1995,37 @@ void AddrLeaks::buildMyGraph(Function &F) {
 						vertices1.insert(std::make_pair(CI->getCalledValue(), VALUE));
 
 						if (functions.find(CI->getCalledValue()) == functions.end()) { // this is not an internal function
-							sources.insert(std::make_pair(CI->getCalledValue(), VALUE));
+                            bool type1 = false, type2 = false;
+
+                            for (std::vector<std::pair<std::string, std::vector<int> > >::iterator it = functionListConditional.begin(); 
+                                    it != functionListConditional.end(); it++) {
+                                std::string fname = (*it).first;
+                                std::vector<int> args = (*it).second;
+
+                                if (FF->getName() == fname) { // if operand is tainted, result is tainted
+                                    type1 = true;
+
+                                    for (unsigned i = 0; i < args.size(); i++) {
+                                        if (i < CI->getNumArgOperands()) { // arg is on function call?
+                                            graphVV[std::make_pair(CI->getCalledValue(), VALUE)].insert(
+                                                std::make_pair(CI->getArgOperand(i), VALUE));
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (!type1) { 
+                                for (std::vector<std::string>::iterator it = functionListNever.begin(); it != functionListNever.end(); it++) {
+                                    if (FF->getName() == *it) { // result never tainted
+                                        type2 = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!type1 && !type2)  { // result always tainted
+                                sources.insert(std::make_pair(CI->getCalledValue(), VALUE));
+                            }
 						}
 					}
 
@@ -1862,11 +2046,75 @@ void AddrLeaks::buildMyGraph(Function &F) {
 					}
 				}
 
+                if (isa<InvokeInst>(I)) {
+					InvokeInst *II = dyn_cast<InvokeInst>(I);
+
+					Function *FF = II->getCalledFunction();
+
+					if (FF && !FF->getReturnType()->isVoidTy()) {
+						graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(II->getCalledValue(), VALUE));
+
+						vertices1.insert(std::make_pair(I, VALUE));
+						vertices1.insert(std::make_pair(II->getCalledValue(), VALUE));
+
+						if (functions.find(II->getCalledValue()) == functions.end()) { // this is not an internal function
+                            bool type1 = false, type2 = false;
+
+                            for (std::vector<std::pair<std::string, std::vector<int> > >::iterator it = functionListConditional.begin(); 
+                                    it != functionListConditional.end(); it++) {
+                                std::string fname = (*it).first;
+                                std::vector<int> args = (*it).second;
+
+                                if (FF->getName() == fname) { // if operand is tainted, result is tainted
+                                    type1 = true;
+
+                                    for (unsigned i = 0; i < args.size(); i++) {
+                                        if (i < II->getNumArgOperands()) { // arg is on function call?
+                                            graphVV[std::make_pair(II->getCalledValue(), VALUE)].insert(
+                                                std::make_pair(II->getArgOperand(i), VALUE));
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (!type1) { 
+                                for (std::vector<std::string>::iterator it = functionListNever.begin(); it != functionListNever.end(); it++) {
+                                    if (FF->getName() == *it) { // result never tainted
+                                        type2 = true;
+                                        break;
+                                    }
+                                }
+                            }
+
+                            if (!type1 && !type2)  { // result always tainted
+                                sources.insert(std::make_pair(II->getCalledValue(), VALUE));
+                            }
+						}
+					}
+
+					if (FF && FF->getName() == "itoa") {
+						Value *dst = II->getOperand(1);
+
+						IntSet pointsTo = pointerAnalysis->pointsTo(Value2Int(dst));
+
+						for (IntSet::const_iterator it = pointsTo.begin(),
+								e = pointsTo.end(); it != e; it++) {
+
+							if (int2value.count(*it)) {
+								sources.insert(std::make_pair(int2value[*it], VALUE));
+							} else {
+								sources2.insert(std::make_pair(*it, VALUE));
+							}
+						}
+					}
+				}
+
+
 				// Handle simple operations
 				for (unsigned i = 0; i < I->getNumOperands(); ++i) {
 					Value *v = I->getOperand(i);
 
-					if (!isa<CallInst>(I)) {
+					if (!isa<CallInst>(I) && !isa<InvokeInst>(I)) {
 						graphVV[std::make_pair(I, VALUE)].insert(std::make_pair(v, VALUE));
 						vertices1.insert(std::make_pair(I, VALUE));
 						vertices1.insert(std::make_pair(v, VALUE));
