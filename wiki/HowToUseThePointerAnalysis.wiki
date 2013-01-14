@@ -162,7 +162,7 @@ while the other, regular, vertices are blue. The red boxes are the set of
 positions pointed by a given vertex.
 
 More information regarding the LLVM options (such as `-view-cfg` and
-`-dot-cfg`) can be found on the [http://llvm.org/docs/Passes.html LLVM
-documentation].
+`-dot-cfg`) can be found on the 
+[http://llvm.org/docs/Passes.html LLVM documentation].
 For information about the parameters of the `dot` tool and other output file
 types , run "`dot -?`" or check the manpage (`man dot`).
