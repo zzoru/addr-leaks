@@ -18,7 +18,7 @@ typedef std::deque<int> IntDeque;
 // ============================================= //
 
 class PointerAnalysis {
-    
+
     public:
         PointerAnalysis();
         ~PointerAnalysis();
@@ -36,12 +36,12 @@ class PointerAnalysis {
         void addLoad(int A, int B);
 
         // Execute the pointer analysis
-        void solve();
+        void solve(bool withCycleRemoval = true);
 
         // Return the set of positions pointed by A:
         //   pointsTo(A) = {B1, B2, ...}
         std::set<int>  pointsTo(int A);
-	
+
         // Return the points-to map
         std::map<int, std::set<int> > allPointsTo();
 
@@ -51,25 +51,36 @@ class PointerAnalysis {
         // Print the graph (DOT format)
         void printDot(std::ostream& output, std::string graphName, 
                 std::map<int, std::string> names);
-	
+
+		// Get the amount of merged vertices
+		int getNumOfMertgedVertices();
+		int getNumCallsRemove();
+		int getNumVertices();
+
+		void doDummy();
+
 	private:
 		void addNode(int id);
 		void addEdge(int fromId, int toId);
 		void addToPts(int pointed, int pointee);
+		bool comparePts(int a, int b);
+		void cycleSearch(int source, int target);
 		void merge(int id, int target);
 		void visit(int Node, IntMap& Order, IntMap& Repr, int& idxOrder,
 			IntSet& Curr, IntDeque& Stack);
         void removeCycles();
-	
+
 		// Hold the points-to Set
 		IntSetMap pointsToSet;
 
 		// Hold the vertices and their representatives
         IntMap vertices;
-		
+		int numMerged;
+		int numCallsRemove;
+
 		// Hold the active vertices
 		IntSet activeVertices;
-		
+
 		// Hold the graph structure
         IntSetMap from;
         IntSetMap to;
