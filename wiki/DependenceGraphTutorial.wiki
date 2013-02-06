@@ -105,10 +105,10 @@ The dependency graph produced is shown below:
 
 http://addr-leaks.googlecode.com/svn/trunk/AddrLeaks/module.png
 
-We can see that this dependency graph has two different types of edges: normal and dashed.
-The normal edges represent direct data dependency between the values of the linked vertex.
-For example, the _add_ vertex depends from the values of _tmp_ and _tmp1_. The dashed represents
-points-to information. For example, the _a_ vertex depends from the value of the (m1 ADDR)
+We can see that this dependency graph has two different types of edges: solid and dashed.
+The solid edges represent direct data dependency between the values of the linked vertices.
+For example, the _add_ vertex depends on the values of _tmp_ and _tmp1_. The dashed edges represents
+points-to information. For example, the _a_ vertex depends on the value of the (m1 ADDR)
 vertex because it is a pointer and a pointer contains the address of the memory position
 it points to. The dashed edge means that when you read the value located in the address
 pointed by _a_, you are reading the value stored in that position, hence (m1 VALUE).
