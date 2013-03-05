@@ -2,7 +2,7 @@
 
 = Example 2 - Echo server with info leak =
 
-Here we present an example of stack overflow exploitation using an information leak to bypass ASLR (and DEP) on Ubuntu 12.04 64 bits. The vulnerable program is an echo server that keeps listening to client connections on port 4000 and when a client connects, receives some data and sends the same data back.
+Here we present an example of stack overflow exploitation using an information leak to bypass ASLR (and DEP) on Ubuntu 12.04 64 bits. The vulnerable program is an echo server that keeps listening to client connections on port 4000 and when a client connects, receives some data and sends the same data back. In this example we will exploit a program that uses [http://en.wikipedia.org/wiki/Canary_value canaries] to secure functions against attacks that change the return address of functions. The key idea is to overwrite a function pointer p inside the vulnerable code. In this way, when p is used to call a function, we will point it to another target, effectively gaining control of the program.
 
 == Echo server ==
 
@@ -12,6 +12,9 @@ The echo server code is shown below:
 /* Echo server with info leak
  * Compile with:
  *     clang -m32 -fstack-protector -g server.c -o server -pie -f PIE
+ * the -fstack-protector directive instructs clang to add canaries to the
+ * function code, so that attacks that try to change the return address of the
+ * function will not succeed.
  */
 
 #include <netinet/in.h>
@@ -75,7 +78,7 @@ int main() {
 }
 }}}
 
-The stack overflow occurs at the _process_input()_ function, when the data received from the client is copied into _localbuf_ via _memcpy()_. The information leak also occurs at the same function, when the server recognizes the special string "debug" and returns two internal addresses: the address of _localbuf_, which is a stack address, and the address of send(), which is an address of a function from the dynamic loaded library libc.
+The stack overflow occurs at the _process_input()_ function, when the data received from the client is copied into _localbuf_ via _memcpy()_. We will try to overwrite the value of _foo_, which is a pointer to a function. The information leak also occurs at the same function, when the server recognizes the special string "debug" and returns two internal addresses: the address of _localbuf_, which is a stack address, and the address of send(), which is an address of a function from the dynamic loaded library libc.
 
 == Information leak to defeat ASLR ==
 
